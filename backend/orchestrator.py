@@ -60,11 +60,14 @@ async def handle_turn(session: dict, text: str) -> str:
     start = time.perf_counter()
     guard, analysis = await asyncio.gather(guardrail.check_input(text), _analyse(session))
     case.timings["analysis"] = round(time.perf_counter() - start, 2)
-    if analysis:
-        session["analysis"] = analysis
-        case.apply_analysis(analysis)
     if guard.flagged:
         case.injection_attempts.append({"turn": turn, "source": guard.source, "score": guard.score})
+    case.apply_analysis(analysis, injection=guard.flagged)
+    if analysis:
+        # The analyst's next turn should build on the merged (sticky) view, not its raw answer.
+        session["analysis"] = analysis.model_copy(
+            update={"scam_type": case.scam_type, "risk_score": case.risk_score, "signals": case.signals})
+    if guard.flagged:
         tactic = "baffled_by_jargon"
     else:
         tactic = analysis.stall_tactic if analysis else analyst.DEFAULT_TACTIC

@@ -6,10 +6,15 @@ import time
 
 from pydantic import BaseModel, Field
 
-from backend.analyst import Analysis
+from backend.analyst import SCAM_TYPES, Analysis
 from backend.evidence import Findings
 
 EVIDENCE_KINDS = ("phones", "upi_ids", "links", "banks")
+SPECIFIC_TYPES = set(SCAM_TYPES) - {"other", "not_scam"}
+MAX_RISK_DROP = 5          # per turn, unless the call clearly turns innocent
+INNOCENT_RISK = 30         # analyst says not_scam AND risk below this = clearly innocent
+INJECTION_RISK_BUMP = 10   # trying to hijack Dadaji is itself a red flag
+INJECTION_SIGNAL = "prompt injection attempt"
 
 
 class CaseFile(BaseModel):
@@ -34,11 +39,30 @@ class CaseFile(BaseModel):
     def add_message(self, role: str, text: str):
         self.transcript.append({"role": role, "text": text, "t": round(time.time() - self.started_at, 1)})
 
-    def apply_analysis(self, a: Analysis):
-        self.scam_type = a.scam_type
-        self.risk_score = a.risk_score
-        self.risk_history.append(a.risk_score)
-        self.signals = a.signals
+    def apply_analysis(self, a: Analysis | None, injection: bool = False):
+        """Merge the analyst's latest view into what we already know.
+
+        The analyst only sees recent messages, so one odd answer shouldn't undo the case:
+        - a specific scam type is sticky: it can change to another specific type, but not
+          fall back to "other";
+        - risk drops by at most MAX_RISK_DROP per turn, unless the call clearly turns innocent;
+        - an injection attempt raises risk above where it was.
+        a is None when the analyst failed this turn.
+        """
+        prev = self.risk_score
+        innocent = a is not None and a.scam_type == "not_scam" and a.risk_score < INNOCENT_RISK
+        risk = prev
+        if a is not None:
+            if innocent or a.scam_type in SPECIFIC_TYPES or self.scam_type not in SPECIFIC_TYPES:
+                self.scam_type = a.scam_type
+            risk = a.risk_score if innocent else max(a.risk_score, prev - MAX_RISK_DROP)
+            self.signals = list(a.signals)
+        if injection:
+            risk = max(risk, prev) + INJECTION_RISK_BUMP
+        if self.injection_attempts and INJECTION_SIGNAL not in self.signals:
+            self.signals.append(INJECTION_SIGNAL)  # stays listed on later turns too
+        self.risk_score = min(100, risk)
+        self.risk_history.append(self.risk_score)
 
     def add_evidence(self, turn: int, f: Findings):
         for kind in EVIDENCE_KINDS:

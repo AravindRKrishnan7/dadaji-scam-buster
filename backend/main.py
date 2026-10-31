@@ -5,6 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from backend import config, dashboard, orchestrator, stt
@@ -18,6 +19,7 @@ log = logging.getLogger("uvicorn.error")
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 app = FastAPI(title="Dadaji Scam Buster")
+app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
 # In-memory sessions: session_id -> {"persona", "history" (LLM messages), "analysis", "case"}.
 # Lost on restart; case files move to SQLite in milestone 4.

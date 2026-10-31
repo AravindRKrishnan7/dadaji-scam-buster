@@ -69,6 +69,7 @@ async def handle_turn(session: dict, text: str) -> str:
     else:
         tactic = analysis.stall_tactic if analysis else analyst.DEFAULT_TACTIC
     case.stall_tactic = tactic
+    case.stall_note = analyst.TACTICS[tactic][1]
     case.tactics_used.append(tactic)
     await dashboard.publish(case)
 

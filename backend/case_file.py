@@ -21,7 +21,8 @@ class CaseFile(BaseModel):
     risk_score: int = 0
     risk_history: list[int] = []
     signals: list[str] = []                  # the analyst's latest (cumulative) list
-    stall_tactic: str | None = None          # the director's note for Dadaji's latest reply
+    stall_tactic: str | None = None          # tactic key for Dadaji's latest reply
+    stall_note: str | None = None            # ...and the instruction he was given
     tactics_used: list[str] = []
     evidence: dict[str, list[dict]] = Field(
         default_factory=lambda: {kind: [] for kind in (*EVIDENCE_KINDS, "context")})

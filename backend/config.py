@@ -35,3 +35,7 @@ LLM_MODEL = os.getenv("LLM_MODEL", _provider["model"])
 LLM_API_KEY = os.getenv(_provider["api_key_env"]) if _provider["api_key_env"] else "ollama"
 # Set LLM_REASONING_EFFORT= (empty) to stop sending it, e.g. for a non-reasoning model.
 LLM_REASONING_EFFORT = os.getenv("LLM_REASONING_EFFORT", _provider["reasoning_effort"]) or None
+
+# Speech-to-text always uses Groq Whisper (Ollama has no Whisper).
+STT_BASE_URL = os.getenv("STT_BASE_URL", PROVIDERS["groq"]["base_url"])
+STT_MODEL = os.getenv("STT_MODEL", "whisper-large-v3-turbo")

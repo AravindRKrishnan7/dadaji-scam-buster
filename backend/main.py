@@ -3,13 +3,15 @@ import logging
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from backend import config
+from backend import config, stt
 from backend.dadaji import dadaji_reply
 from backend.personas import DEFAULT_PERSONA, PERSONAS
+
+MAX_AUDIO_BYTES = 5 * 1024 * 1024  # a 20 s clip is well under 1 MB
 
 log = logging.getLogger("uvicorn.error")
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
@@ -70,3 +72,18 @@ async def chat_endpoint(req: ChatRequest):
     session["history"].append({"role": "assistant", "content": reply})
 
     return ChatResponse(session_id=session_id, persona=session["persona"], reply=reply)
+
+
+@app.post("/api/transcribe")
+async def transcribe_endpoint(audio: UploadFile):
+    data = await audio.read()
+    if len(data) > MAX_AUDIO_BYTES:
+        raise HTTPException(413, "Audio clip too large (max 5 MB)")
+    try:
+        text = await stt.transcribe(data, audio.filename or "clip.webm", audio.content_type or "audio/webm")
+    except stt.STTUnavailable as e:
+        raise HTTPException(503, str(e))
+    except Exception as e:
+        log.exception("Transcription failed")
+        raise HTTPException(502, f"Transcription error: {e}")
+    return {"text": text}

@@ -244,9 +244,17 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
   3. `frontend/scream.wav` plays.
   4. The complaint card appears.
   `end_call()` adds the finale as the last transcript line.
-- Safari only allows audio that was started inside a click, so `unlockScream()` plays it
-  muted for a moment on the handoff click, each typed send and the End click (the
-  auto-finale has no click of its own).
+- Browsers only allow sound that was started inside a click, so `unlockAudio()` (an empty
+  utterance + the scream played muted for a moment) runs on the handoff click, every Send and
+  the End click. The auto-finale has no click of its own.
+- **The finale never waits forever:**
+  - `speak()` skips speech that hasn't started after 2.5 s and cuts it off at 20 s.
+  - `playScream()` skips after 1.5 s without playing and stops at 5 s.
+  - `/api/call/end` times out after 30 s, and then an error replaces the complaint.
+  - Each step logs `[finale] n/5` to the console.
+- Don't `return` inside the `try` in `scammerSays()`: the `finally` runs and then the function
+  exits, so the `endCall()` after it is skipped. That was the auto-finale hang (tested in
+  headless Chrome over CDP with real mouse clicks).
 - The scream comes from `scripts/make_scream.py`: stdlib only, a fixed seed, so it's
   reproducible. A jump scare: 0.7 s of silence, then a 5 ms attack into a ~3.4 kHz shriek
   (two detuned buzzy voices, "eee" formants at 3 and 6 kHz, a 70 Hz roughness flutter, hiss)

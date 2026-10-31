@@ -4,14 +4,14 @@
                   ├─ guardrail input check ┐ asyncio.gather                        │
                   └─ analyst ──────────────┴─> tactic ─> Dadaji ─> guardrail output ─> reply
 Dashboard updates are pushed at each step, and the case file is saved after each turn.
-end_call() wraps the call up: it waits for evidence, then marks the case as ended and saves it.
+end_call() wraps the call up: it waits for evidence, ends the case, writes the complaint, saves.
 """
 import asyncio
 import logging
 import random
 import time
 
-from backend import analyst, dashboard, db, evidence, guardrail
+from backend import analyst, dashboard, db, evidence, guardrail, reporter
 from backend.dadaji import dadaji_reply
 from backend.personas import PERSONAS
 
@@ -28,15 +28,20 @@ async def _analyse(session: dict) -> analyst.Analysis | None:
         return None
 
 
+def _regex_findings(text: str) -> evidence.Findings:
+    findings = evidence.Findings()
+    for kind, extract in evidence.EXTRACTORS.values():
+        findings.add(kind, extract(evidence.normalise(text)), "regex")
+    return findings
+
+
 async def _collect_evidence(case, turn: int, text: str):
     start = time.perf_counter()
     try:
         findings = await evidence.run(text)
     except Exception:
         log.exception("Evidence agent failed; using regexes only")
-        findings = evidence.Findings()
-        for kind, extract in evidence.EXTRACTORS.values():
-            findings.add(kind, extract(evidence.normalise(text)), "regex")
+        findings = _regex_findings(text)
     case.add_evidence(turn, findings)
     case.timings["evidence"] = round(time.perf_counter() - start, 2)
     await dashboard.publish(case)
@@ -113,6 +118,14 @@ async def end_call(session: dict):
     case = session["case"]
     case.ended_at = time.time()  # first, so the timer stops at the moment End call was pressed
     if session["pending"]:
-        await asyncio.wait(session["pending"], timeout=EVIDENCE_WAIT)
-    await _save(case)
+        _, late = await asyncio.wait(session["pending"], timeout=EVIDENCE_WAIT)
+        if late:
+            # The evidence agent is slow (rate-limited?). Run the regex net over everything the
+            # scammer said, so the complaint still gets the numbers and IDs.
+            log.warning("%d evidence task(s) still running at end of call; using regexes", len(late))
+            said = [m["text"] for m in case.transcript if m["role"] == "scammer"]
+            for turn, text in enumerate(said, start=1):
+                case.add_evidence(turn, _regex_findings(text))
     await dashboard.publish(case)
+    session["report"] = (await reporter.build(case)).model_dump()
+    await _save(case, session["report"])

@@ -17,8 +17,14 @@ def trim_reply(text: str) -> str:
     return " ".join(sentences[:MAX_SENTENCES]).strip()
 
 
-async def dadaji_reply(persona_key: str, history: list[dict]) -> str:
-    """history uses OpenAI roles: "user" = scammer, "assistant" = Dadaji."""
+async def dadaji_reply(persona_key: str, history: list[dict], notes: list[str] | None = None) -> str:
+    """history uses OpenAI roles: "user" = scammer, "assistant" = Dadaji.
+
+    notes are one-off instructions for this reply only (a stalling tactic, guardrail feedback),
+    sent after the conversation so the model weighs them most.
+    """
     persona = PERSONAS[persona_key]
     messages = [{"role": "system", "content": persona.system_prompt}, *history[-MAX_HISTORY:]]
-    return trim_reply(await chat(messages))
+    if notes:
+        messages.append({"role": "system", "content": "For your next reply only: " + " ".join(notes)})
+    return trim_reply(await chat(messages, role="dadaji"))

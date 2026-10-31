@@ -35,6 +35,7 @@ class Persona:
     description: str
     system_prompt: str
     greeting: str  # fixed first line when Dadaji picks up, so there is no LLM wait
+    fallbacks: tuple[str, ...]  # canned stalls for when the LLM fails or the guardrail blocks twice
 
 
 PERSONAS: dict[str, Persona] = {
@@ -48,6 +49,11 @@ You are delighted someone called and keep asking whether they have eaten. You fo
 was said a moment ago and confuse buttons on your phone.
 """,
         greeting="Haan haan, hello? Kaun bol raha hai? Bunty, tu hai kya beta?",
+        fallbacks=(
+            "Hello? Hello beta? Awaaz kat rahi hai, zara phir se bolo.",
+            "Ruko beta, chashma dhoond raha hoon... abhi toh yahin tha.",
+            "Arre, doorbell baji hai, ek minute ruko beta, phone mat rakhna.",
+        ),
     ),
 }
 

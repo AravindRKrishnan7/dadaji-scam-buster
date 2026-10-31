@@ -3,12 +3,14 @@ import logging
 import uuid
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from backend import config, stt
-from backend.dadaji import dadaji_reply
+from backend import config, dashboard, orchestrator, stt
+from backend.case_file import CaseFile
+from backend.llm import GroqUnavailable
 from backend.personas import DEFAULT_PERSONA, PERSONAS
 
 MAX_AUDIO_BYTES = 5 * 1024 * 1024  # a 20 s clip is well under 1 MB
@@ -17,9 +19,10 @@ log = logging.getLogger("uvicorn.error")
 FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 
 app = FastAPI(title="Dadaji Scam Buster")
+app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
-# In-memory sessions: session_id -> {"persona": key, "history": [messages]}.
-# Lost on restart; case files move to SQLite in a later milestone.
+# In-memory sessions: session_id -> {"persona", "history" (LLM messages), "analysis", "case"}.
+# Lost on restart; case files move to SQLite in milestone 4.
 sessions: dict[str, dict] = {}
 
 
@@ -49,7 +52,8 @@ def new_session(persona: str) -> tuple[str, dict]:
     if persona not in PERSONAS:
         raise HTTPException(400, f"Unknown persona {persona!r}")
     session_id = str(uuid.uuid4())
-    sessions[session_id] = {"persona": persona, "history": []}
+    sessions[session_id] = {"persona": persona, "history": [], "analysis": None,
+                            "case": CaseFile(session_id=session_id, persona=persona)}
     return session_id, sessions[session_id]
 
 
@@ -60,7 +64,7 @@ def index():
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "provider": config.LLM_PROVIDER, "model": config.LLM_MODEL}
+    return {"ok": True, "provider": config.LLM_PROVIDER, "models": config.MODELS}
 
 
 @app.get("/api/personas")
@@ -74,6 +78,7 @@ def call_start(req: CallStartRequest):
     session_id, session = new_session(req.persona)
     greeting = PERSONAS[req.persona].greeting
     session["history"].append({"role": "assistant", "content": greeting})
+    session["case"].add_message("dadaji", greeting)
     return CallStartResponse(session_id=session_id, persona=req.persona, greeting=greeting)
 
 
@@ -86,15 +91,8 @@ async def chat_endpoint(req: ChatRequest):
     else:
         session_id = req.session_id
 
-    session["history"].append({"role": "user", "content": req.message})
-    try:
-        reply = await dadaji_reply(session["persona"], session["history"])
-    except Exception as e:
-        session["history"].pop()  # drop the unanswered message so a retry is clean
-        log.exception("LLM call failed")
-        raise HTTPException(502, f"LLM error: {e}")
-    session["history"].append({"role": "assistant", "content": reply})
-
+    # All the agents run here; failures fall back to in-character lines instead of errors.
+    reply = await orchestrator.handle_turn(session, req.message)
     return ChatResponse(session_id=session_id, persona=session["persona"], reply=reply)
 
 
@@ -105,9 +103,26 @@ async def transcribe_endpoint(audio: UploadFile):
         raise HTTPException(413, "Audio clip too large (max 5 MB)")
     try:
         text = await stt.transcribe(data, audio.filename or "clip.webm", audio.content_type or "audio/webm")
-    except stt.STTUnavailable as e:
-        raise HTTPException(503, str(e))
+    except GroqUnavailable as e:
+        raise HTTPException(503, f"{e} Voice needs it. You can still type.")
     except Exception as e:
         log.exception("Transcription failed")
         raise HTTPException(502, f"Transcription error: {e}")
     return {"text": text}
+
+
+@app.websocket("/ws/{session_id}")
+async def dashboard_ws(ws: WebSocket, session_id: str):
+    """The dashboard listens here. The server only pushes; nothing is expected back."""
+    session = sessions.get(session_id)
+    if session is None:
+        await ws.close(code=4404)
+        return
+    await dashboard.connect(session_id, ws, session["case"])
+    try:
+        while True:
+            await ws.receive_text()  # just keeps the connection open until the browser leaves
+    except WebSocketDisconnect:
+        pass
+    finally:
+        dashboard.disconnect(session_id, ws)

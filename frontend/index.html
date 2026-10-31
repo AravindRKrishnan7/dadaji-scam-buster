@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dadaji Scam Buster</title>
+  <style>
+    :root { --bg: #14121a; --panel: #1f1c28; --text: #ece8f4; --muted: #9a93ab;
+            --me: #3a2f55; --dadaji: #2b3a2f; --accent: #ff8a3d; }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+           font: 16px/1.45 system-ui, sans-serif; }
+    main { max-width: 640px; margin: 0 auto; padding: 16px; display: flex;
+           flex-direction: column; height: 100vh; }
+    header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    h1 { font-size: 1.25rem; margin: 0; }
+    h1 span { color: var(--accent); }
+    .sub { color: var(--muted); font-size: .85rem; margin: 4px 0 12px; }
+    #log { flex: 1; overflow-y: auto; background: var(--panel); border-radius: 12px;
+           padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+    .msg { max-width: 85%; padding: 8px 12px; border-radius: 12px; white-space: pre-wrap; }
+    .msg small { display: block; color: var(--muted); font-size: .75rem; }
+    .me { align-self: flex-end; background: var(--me); }
+    .dadaji { align-self: flex-start; background: var(--dadaji); }
+    .error { align-self: center; color: #ff8080; font-size: .85rem; }
+    form { display: flex; gap: 8px; margin-top: 12px; }
+    input { flex: 1; padding: 10px 12px; border-radius: 10px; border: 1px solid #3a3548;
+            background: var(--panel); color: var(--text); font: inherit; }
+    button { padding: 10px 14px; border: 0; border-radius: 10px; background: var(--accent);
+             color: #1a1208; font: inherit; font-weight: 600; cursor: pointer; }
+    button.secondary { background: transparent; color: var(--muted); border: 1px solid #3a3548; }
+    button:disabled { opacity: .5; cursor: wait; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>👴 Dadaji <span>Scam Buster</span></h1>
+    <button class="secondary" id="newCall" type="button">New call</button>
+  </header>
+  <p class="sub">Play the scammer. Type what they would say and Dadaji will answer.</p>
+  <div id="log"></div>
+  <form id="form">
+    <input id="input" autocomplete="off" placeholder="Hello sir, I am calling from your bank..." autofocus>
+    <button id="send">Send</button>
+  </form>
+</main>
+<script>
+  const log = document.getElementById("log");
+  const form = document.getElementById("form");
+  const input = document.getElementById("input");
+  const send = document.getElementById("send");
+  let sessionId = null;
+
+  function addMessage(who, text, cls) {
+    const div = document.createElement("div");
+    div.className = "msg " + cls;
+    const label = document.createElement("small");
+    label.textContent = who;
+    div.append(label, text);
+    log.append(div);
+    log.scrollTop = log.scrollHeight;
+  }
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const message = input.value.trim();
+    if (!message) return;
+    addMessage("Scammer (you)", message, "me");
+    input.value = "";
+    send.disabled = true;
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, session_id: sessionId, persona: "sweet" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || res.statusText);
+      sessionId = data.session_id;
+      addMessage("Dadaji", data.reply, "dadaji");
+    } catch (err) {
+      addMessage("", "⚠ " + err.message, "error");
+    } finally {
+      send.disabled = false;
+      input.focus();
+    }
+  });
+
+  document.getElementById("newCall").addEventListener("click", () => {
+    sessionId = null;
+    log.replaceChildren();
+    input.focus();
+  });
+</script>
+</body>
+</html>

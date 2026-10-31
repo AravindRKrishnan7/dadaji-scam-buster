@@ -122,7 +122,9 @@ CHARACTER_BREAKS = re.compile(r"""
 """, re.I | re.X)
 PROFANITY = re.compile(
     r"\b(?:fuck\w*|shit|bitch|bastard|asshole|chutiya|madarchod|behenchod|bhenchod|bhosdi\w*"
-    r"|gandu|randi|harami)\b", re.I)
+    r"|gandu|randi|harami"
+    # name-calling: Grumpy Dadaji may grumble, but never insult the caller
+    r"|bewa?koof|bevakoof|gadhe?|ullu|nalayak|nikamm[ae])\b", re.I)
 
 
 def luhn_ok(digits: str) -> bool:

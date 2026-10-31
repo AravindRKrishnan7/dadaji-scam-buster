@@ -2,6 +2,7 @@
 const $ = (id) => document.getElementById(id);
 const log = $("log"), input = $("input"), send = $("send"), pill = $("pill");
 const handoffBtn = $("handoff"), tapBtn = $("tap"), endBtn = $("end"), voiceSelect = $("voice");
+const personaSelect = $("persona");
 const levelBar = $("level").firstElementChild;
 
 let sessionId = null;
@@ -39,6 +40,24 @@ async function postJSON(url, body) {
   if (!res.ok) throw new Error(data.detail || res.statusText);
   return data;
 }
+
+// ---------- Personas ----------
+let personas = {}; // key -> {key, name, description, finale}
+async function loadPersonas() {
+  try {
+    const list = await (await fetch("/api/personas")).json();
+    personas = Object.fromEntries(list.map((p) => [p.key, p]));
+    personaSelect.replaceChildren(...list.map((p) => {
+      const opt = new Option(p.name, p.key);
+      opt.title = p.description;
+      return opt;
+    }));
+    dashboard.setPersonas(list);
+  } catch { /* keep the built-in Sweet Dadaji option */ }
+}
+loadPersonas();
+// A call keeps the persona it started with, so the picker is locked until it ends.
+const lockPersona = (locked) => { personaSelect.disabled = locked; };
 
 // ---------- Text-to-speech ----------
 let voices = [];
@@ -205,7 +224,8 @@ async function scammerSays(text) {
   addMessage("Scammer", text, "me");
   setState("thinking");
   try {
-    const data = await postJSON("/api/chat", { message: text, session_id: sessionId, persona: "sweet" });
+    lockPersona(true);
+    const data = await postJSON("/api/chat", { message: text, session_id: sessionId, persona: personaSelect.value });
     sessionId = data.session_id;
     dashboard.watch(sessionId); // no-op if already watching this call
     addMessage("Dadaji", data.reply, "dadaji");
@@ -215,6 +235,7 @@ async function scammerSays(text) {
     }
   } catch (err) {
     addError(err.message);
+    if (!sessionId) lockPersona(false); // the first message failed: no call was started
   } finally {
     busy = false;
     send.disabled = false;
@@ -234,7 +255,8 @@ handoffBtn.addEventListener("click", async () => {
     addError("Microphone blocked or unavailable. Dadaji will still talk, and you can type.");
   }
   try {
-    const data = await postJSON("/api/call/start", { persona: "sweet" });
+    lockPersona(true);
+    const data = await postJSON("/api/call/start", { persona: personaSelect.value });
     sessionId = data.session_id;
     dashboard.watch(sessionId);
     inCall = true;
@@ -249,6 +271,7 @@ handoffBtn.addEventListener("click", async () => {
   } catch (err) {
     addError(err.message);
     stopMic();
+    lockPersona(false);
   } finally {
     handoffBtn.disabled = false;
   }
@@ -268,6 +291,7 @@ endBtn.addEventListener("click", async () => {
   handoffBtn.hidden = false;
   tapBtn.hidden = endBtn.hidden = true;
   setState("idle");
+  lockPersona(false);
   addMessage("", "Call ended", "error");
   try {
     // The server stops the timer, saves the case and writes the complaint.

@@ -15,6 +15,7 @@ const dashboard = (() => {
     other: "Other", not_scam: "Not a scam", unknown: "Unknown",
   };
   const EVIDENCE_LABELS = { phones: "Phone numbers", upi_ids: "UPI IDs", links: "Links", banks: "Banks / apps" };
+  let personaNames = {}; // key -> display name, set by call.js once /api/personas loads
   const pretty = (key) => key.replace(/_/g, " ").replace(/^./, (c) => c.toUpperCase());
 
   function el(tag, cls, text, title) {
@@ -161,6 +162,7 @@ const dashboard = (() => {
   // ---------- Rendering ----------
   function render(c, now) {
     updateClock(c, now);
+    $("personaname").textContent = "· " + (personaNames[c.persona] || pretty(c.persona));
     const started = c.turns > 0;
     const color = `hsl(${120 - c.risk_score * 1.2} 70% 50%)`; // green → red
     $("risk").textContent = started ? c.risk_score : "–";
@@ -229,5 +231,7 @@ const dashboard = (() => {
       : [el("li", "muted", c.turns ? "All replies passed ✓" : "Nothing yet")]));
   }
 
-  return { watch, stop, finish };
+  const setPersonas = (list) => { personaNames = Object.fromEntries(list.map((p) => [p.key, p.name])); };
+
+  return { watch, stop, finish, setPersonas };
 })();

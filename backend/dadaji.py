@@ -45,7 +45,8 @@ async def dadaji_reply(persona_key: str, history: list[dict], notes: list[str] |
     """
     persona = PERSONAS[persona_key]
     messages = [{"role": "system", "content": persona.system_prompt}, *history[-MAX_HISTORY:]]
-    notes = [*(notes or []), *filter(None, [variety_note(history)])]
+    notes = [*(notes or []), *filter(None, [variety_note(history), persona.reminder])]
     if notes:
-        messages.append({"role": "system", "content": "For your next reply only: " + " ".join(notes)})
+        messages.append({"role": "system", "content": "For your next reply only (in your own "
+                         "personality): " + " ".join(notes)})
     return trim_reply(await chat(messages, role="dadaji"))

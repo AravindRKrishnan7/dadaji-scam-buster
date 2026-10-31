@@ -76,7 +76,8 @@ def health():
 
 @app.get("/api/personas")
 def list_personas():
-    return [{"key": p.key, "name": p.name, "description": p.description} for p in PERSONAS.values()]
+    return [{"key": p.key, "name": p.name, "description": p.description, "finale": p.finale}
+            for p in PERSONAS.values()]
 
 
 @app.post("/api/call/start", response_model=CallStartResponse)

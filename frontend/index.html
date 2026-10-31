@@ -87,6 +87,18 @@
     #clock { font-size: 2.4rem; font-weight: 700; line-height: 1; color: var(--accent);
              font-variant-numeric: tabular-nums; }
     #clock.ended { color: var(--text); }
+    .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+    .actions a, button.small { padding: 4px 10px; font-size: .8rem; border-radius: 8px; }
+    .actions a { color: var(--text); border: 1px solid var(--line); text-decoration: none; }
+    #report h4 { margin: 12px 0 4px; font-size: .8rem; color: var(--accent); }
+    #report dl { grid-template-columns: minmax(7em, 35%) minmax(0, 1fr); }
+    #report dd { font-size: .88rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+    #report dd small { display: block; color: var(--muted); font-size: .72rem; }
+    button.copy { padding: 1px 8px; margin-left: 6px; font-size: .72rem; font-weight: 500;
+                  background: transparent; color: var(--text); border: 1px solid var(--line); }
+    #reportnotes { margin-top: 10px; }
+    #reportnotes li { font-size: .8rem; color: var(--muted); padding: 2px 0; }
+    @media (max-width: 500px) { #report dl { grid-template-columns: 1fr; } #report dd { margin-bottom: 6px; } }
   </style>
 </head>
 <body>
@@ -116,6 +128,17 @@
       <section class="card wide">
         <h3>⏱ Scammer time wasted</h3>
         <div class="timer-row"><span id="clock">00:00</span><span id="totals" class="muted"></span></div>
+      </section>
+      <section class="card wide" id="reportcard" hidden>
+        <h3>📝 Complaint draft for cybercrime.gov.in</h3>
+        <div class="actions">
+          <button id="copyall" class="small">Copy all</button>
+          <a id="dl-txt" download>Download .txt</a>
+          <a id="dl-json" download>Download .json</a>
+          <a id="dl-transcript" download>Transcript (evidence)</a>
+        </div>
+        <div id="report"></div>
+        <ul id="reportnotes"></ul>
       </section>
       <section class="card">
         <h3>Scam risk <span id="turns"></span></h3>

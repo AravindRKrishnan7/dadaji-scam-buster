@@ -29,6 +29,7 @@ const dashboard = (() => {
   function watch(sessionId) {
     if (sessionId === watching) return;
     stop();
+    $("reportcard").hidden = true; // a new call: the last complaint goes away
     watching = sessionId;
     connect();
   }
@@ -64,12 +65,62 @@ const dashboard = (() => {
     $("conn").className = "conn " + (state === "live" ? "live" : "");
   }
 
-  // The call is over: show the final case file (timer stopped) and refresh the running total.
-  function finish(c) {
+  // The call is over: show the final case file (timer stopped), the complaint and the total.
+  function finish(c, report) {
     stop();
     render(c);
     loadStats();
+    if (report) showReport(report);
   }
+
+  // ---------- Complaint ----------
+  let reportText = "";
+
+  async function copy(text, btn) {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      // No clipboard API (plain http on a LAN address): the old select-and-copy way.
+      const area = el("textarea");
+      area.value = text;
+      document.body.append(area);
+      area.select();
+      document.execCommand("copy");
+      area.remove();
+    }
+    const label = btn.textContent;
+    btn.textContent = "Copied ✓";
+    setTimeout(() => (btn.textContent = label), 1500);
+  }
+
+  function showReport(r) {
+    const base = `/api/cases/${r.session_id}`;
+    $("dl-txt").href = `${base}/report?format=txt`;
+    $("dl-json").href = `${base}/report?format=json`;
+    $("dl-transcript").href = `${base}/transcript`;
+    // Fetched now, so "Copy all" can copy straight away (browsers want the copy right after the click).
+    reportText = "";
+    fetch(`${base}/report?format=txt&attach=false`).then((res) => res.text()).then((t) => (reportText = t));
+
+    $("report").replaceChildren(...r.sections.flatMap((section) => {
+      const rows = el("dl");
+      for (const f of section.fields) {
+        const dd = el("dd");
+        if (f.value) {
+          const btn = el("button", "copy", "Copy");
+          btn.onclick = () => copy(f.value, btn);
+          dd.append(f.value, btn);
+        }
+        if (f.hint) dd.append(el("small", "", f.hint));
+        rows.append(el("dt", "", f.label), dd);
+      }
+      return [el("h4", "", section.title), rows];
+    }));
+    $("reportnotes").replaceChildren(...r.notes.map((n) => el("li", "", n)));
+    $("reportcard").hidden = false;
+    $("reportcard").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+  $("copyall").onclick = (e) => reportText && copy(reportText, e.target);
 
   // ---------- Time wasted ----------
   function fmtClock(s) {

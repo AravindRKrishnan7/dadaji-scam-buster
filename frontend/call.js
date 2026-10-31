@@ -272,7 +272,7 @@ endBtn.addEventListener("click", async () => {
   try {
     // The server stops the timer, saves the case and writes the complaint.
     const data = await postJSON("/api/call/end", { session_id: id });
-    dashboard.finish(data.case); // the final case file stays on screen
+    dashboard.finish(data.case, data.report); // the final case file stays, plus the complaint
   } catch (err) {
     dashboard.stop();
     addError("Couldn't close the case file: " + err.message);

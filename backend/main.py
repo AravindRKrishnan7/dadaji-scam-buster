@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from backend import config, stt
+from backend.llm import GroqUnavailable
 from backend.dadaji import dadaji_reply
 from backend.personas import DEFAULT_PERSONA, PERSONAS
 
@@ -60,7 +61,7 @@ def index():
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "provider": config.LLM_PROVIDER, "model": config.LLM_MODEL}
+    return {"ok": True, "provider": config.LLM_PROVIDER, "models": config.MODELS}
 
 
 @app.get("/api/personas")
@@ -105,8 +106,8 @@ async def transcribe_endpoint(audio: UploadFile):
         raise HTTPException(413, "Audio clip too large (max 5 MB)")
     try:
         text = await stt.transcribe(data, audio.filename or "clip.webm", audio.content_type or "audio/webm")
-    except stt.STTUnavailable as e:
-        raise HTTPException(503, str(e))
+    except GroqUnavailable as e:
+        raise HTTPException(503, f"{e} Voice needs it. You can still type.")
     except Exception as e:
         log.exception("Transcription failed")
         raise HTTPException(502, f"Transcription error: {e}")

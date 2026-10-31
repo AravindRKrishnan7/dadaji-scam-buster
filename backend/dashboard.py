@@ -2,6 +2,8 @@
 
 Every message carries the whole case file, so the page simply re-renders.
 """
+import time
+
 from fastapi import WebSocket
 
 from backend.case_file import CaseFile
@@ -11,7 +13,8 @@ subscribers: dict[str, set[WebSocket]] = {}
 
 
 def message(case: CaseFile) -> dict:
-    return {"type": "case", "case": case.model_dump()}
+    # "now" lets the browser correct for its clock being off when it runs the timer.
+    return {"type": "case", "case": case.model_dump(), "now": time.time()}
 
 
 async def connect(session_id: str, ws: WebSocket, case: CaseFile):

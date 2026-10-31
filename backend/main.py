@@ -1,4 +1,5 @@
 """FastAPI app: serves the front end and the chat API."""
+import asyncio
 import logging
 import uuid
 from pathlib import Path
@@ -8,7 +9,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from backend import config, dashboard, orchestrator, stt
+from backend import config, dashboard, db, orchestrator, stt
 from backend.case_file import CaseFile
 from backend.llm import GroqUnavailable
 from backend.personas import DEFAULT_PERSONA, PERSONAS
@@ -21,8 +22,9 @@ FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend"
 app = FastAPI(title="Dadaji Scam Buster")
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 
-# In-memory sessions: session_id -> {"persona", "history" (LLM messages), "analysis", "case"}.
-# Lost on restart; case files move to SQLite in milestone 4.
+# Live calls: session_id -> {"persona", "history" (LLM messages), "analysis", "case",
+# "pending" (evidence tasks), "ending" (the end-of-call task)}. Lost on restart, but every
+# case file is also saved to SQLite (db.py), so finished cases can still be loaded.
 sessions: dict[str, dict] = {}
 
 
@@ -48,12 +50,17 @@ class CallStartResponse(BaseModel):
     greeting: str
 
 
+class CallEndRequest(BaseModel):
+    session_id: str
+
+
 def new_session(persona: str) -> tuple[str, dict]:
     if persona not in PERSONAS:
         raise HTTPException(400, f"Unknown persona {persona!r}")
     session_id = str(uuid.uuid4())
     sessions[session_id] = {"persona": persona, "history": [], "analysis": None,
-                            "case": CaseFile(session_id=session_id, persona=persona)}
+                            "case": CaseFile(session_id=session_id, persona=persona),
+                            "pending": set()}
     return session_id, sessions[session_id]
 
 
@@ -90,10 +97,46 @@ async def chat_endpoint(req: ChatRequest):
         session_id, session = new_session(req.persona)
     else:
         session_id = req.session_id
+    if session["case"].ended_at is not None:
+        raise HTTPException(409, "This call has ended. Start a new one.")
 
     # All the agents run here; failures fall back to in-character lines instead of errors.
     reply = await orchestrator.handle_turn(session, req.message)
     return ChatResponse(session_id=session_id, persona=session["persona"], reply=reply)
+
+
+@app.post("/api/call/end")
+async def call_end(req: CallEndRequest):
+    """Hang up: stop the timer, write the complaint and save everything."""
+    session = sessions.get(req.session_id)
+    if session is None:
+        raise HTTPException(404, "Unknown call (the server may have restarted).")
+    # A double click sends two requests; both wait for the same single end-of-call task.
+    if "ending" not in session:
+        session["ending"] = asyncio.create_task(orchestrator.end_call(session))
+    await session["ending"]
+    return {"case": session["case"].model_dump()}
+
+
+async def find_case(session_id: str) -> CaseFile:
+    """A live call from memory, otherwise a saved one from SQLite (e.g. after a restart)."""
+    if session_id in sessions:
+        return sessions[session_id]["case"]
+    saved = await db.load(session_id)
+    if saved is None:
+        raise HTTPException(404, "Unknown case")
+    return saved[0]
+
+
+@app.get("/api/cases/{session_id}")
+async def get_case(session_id: str):
+    return {"case": (await find_case(session_id)).model_dump()}
+
+
+@app.get("/api/stats")
+async def stats():
+    """Running total across every saved call, shown under the timer."""
+    return await db.stats()
 
 
 @app.post("/api/transcribe")

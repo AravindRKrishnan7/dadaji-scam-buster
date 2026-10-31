@@ -1,0 +1,21 @@
+# Render Blueprint: one free web service. Secrets are NOT stored here; GROQ_API_KEY has
+# `sync: false`, so Render asks for it in the dashboard when the Blueprint is created.
+services:
+  - type: web
+    name: dadaji-scam-buster
+    runtime: python
+    plan: free
+    branch: main
+    autoDeploy: true
+    buildCommand: pip install -r requirements.txt
+    # One worker on purpose: live calls are kept in memory (main.sessions), so a second
+    # worker wouldn't see them. Render sets $PORT; 0.0.0.0 makes it reachable from outside.
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.14.6
+      - key: LLM_PROVIDER
+        value: groq
+      - key: GROQ_API_KEY
+        sync: false

@@ -153,6 +153,12 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
   scammer text with `textContent` only, never `innerHTML`.
 - Deploy on Render. Its free tier wipes the disk on every deploy, so saved cases don't survive
   a redeploy. That's fine for the demo.
+  - `render.yaml` (Blueprint): free web service, `pip install -r requirements.txt`, then
+    `uvicorn backend.main:app --host 0.0.0.0 --port $PORT`, health check `/api/health`,
+    `PYTHON_VERSION=3.14.6`. **Exactly one worker**: sessions live in memory in `main.py`.
+  - The only secret is `GROQ_API_KEY` (`sync: false`, entered in the dashboard). `requirements.txt`
+    is pinned to the tested versions.
+  - The free tier sleeps after 15 min idle; open the URL a minute before a demo.
 - Everything free and open source under the MIT licence. Secrets go in `.env` (git-ignored),
   and `.env.example` documents them.
 

@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from backend import config, guardrail, stt
+from backend import analyst, config, guardrail, stt
 from backend.llm import GroqUnavailable
 from backend.dadaji import dadaji_reply
 from backend.personas import DEFAULT_PERSONA, PERSONAS
@@ -50,7 +50,7 @@ def new_session(persona: str) -> tuple[str, dict]:
     if persona not in PERSONAS:
         raise HTTPException(400, f"Unknown persona {persona!r}")
     session_id = str(uuid.uuid4())
-    sessions[session_id] = {"persona": persona, "history": []}
+    sessions[session_id] = {"persona": persona, "history": [], "analysis": None, "tactics": []}
     return session_id, sessions[session_id]
 
 
@@ -89,9 +89,13 @@ async def chat_endpoint(req: ChatRequest):
 
     session["history"].append({"role": "user", "content": req.message})
     try:
+        analysis = await analyst.run(session["history"], session["analysis"], session["tactics"])
+        session["analysis"] = analysis
+        session["tactics"].append(analysis.stall_tactic)
+        tactic = analyst.tactic_note(analysis.stall_tactic)
         # The guardrail cleans and checks the draft, retrying once before a canned stall line.
         reply, _blocks = await guardrail.safe_reply(
-            lambda note: dadaji_reply(session["persona"], session["history"], [note] if note else None),
+            lambda note: dadaji_reply(session["persona"], session["history"], [tactic] + ([note] if note else [])),
             PERSONAS[session["persona"]].fallbacks,
         )
     except Exception as e:

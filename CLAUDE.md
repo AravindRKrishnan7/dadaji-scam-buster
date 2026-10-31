@@ -47,6 +47,20 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
   signals, tactics, evidence (with turn numbers), injection attempts, blocked replies (with
   digits redacted), stage timings and the transcript with timestamps. It's in memory for now,
   and SQLite comes with the reporter in M4.
+  - **Merge rules** (`apply_analysis()`): the analyst only sees the last 6 messages, so one odd
+    answer mustn't undo the case.
+    - A specific scam type is sticky. It can change to another specific type, but never falls
+      back to `other`. (The analyst prompt also says to keep a clear type.)
+    - Risk drops by at most 5 per turn (`MAX_RISK_DROP`). The one exception: the analyst says
+      `not_scam` with risk under 30 (`INNOCENT_RISK`), and then its score is taken as is.
+    - An injection attempt lifts risk to 10 above the higher of the new and previous scores
+      (`INJECTION_RISK_BUMP`), capped at 100. "prompt injection attempt" then stays in the
+      signals for the rest of the call.
+    - If the analyst fails, type and risk stay as they were (risk history still gets an entry).
+    - The orchestrator hands the analyst the **merged** view as its "previous analysis" next
+      turn, not its own raw answer.
+    - `tests/test_case_merge.py` replays the SBI KYC + OTP + injection call with stubbed LLMs.
+      `LIVE=1 pytest` also runs it against Groq.
 - **Reporter**: at the end of the call, maps the case file into a complaint shaped like the
   fields on the Indian cybercrime portal (cybercrime.gov.in).
 - **Guardrail** (`guardrail.py`): two checks.
@@ -142,7 +156,8 @@ frontend/
   index.html       layout + styles
   call.js          call screen, mic, TTS
   dashboard.js     live case-file dashboard
-tests/             pytest unit tests (no network): guardrail, evidence regexes, trim_reply
+tests/             pytest unit tests (no network): guardrail, evidence regexes, trim_reply,
+                   case merge rules
 ```
 
 ## Commands

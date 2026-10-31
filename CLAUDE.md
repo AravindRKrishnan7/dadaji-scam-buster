@@ -45,10 +45,36 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
   counts as the app. On Ollama it uses regexes only (Gemma has no tool support).
 - **Case file** (`case_file.py`): a pydantic `CaseFile` in the session, holding risk history,
   signals, tactics, evidence (with turn numbers), injection attempts, blocked replies (with
-  digits redacted), stage timings and the transcript with timestamps. It's in memory for now,
-  and SQLite comes with the reporter in M4.
-- **Reporter**: at the end of the call, maps the case file into a complaint shaped like the
-  fields on the Indian cybercrime portal (cybercrime.gov.in).
+  digits redacted), stage timings, the transcript with timestamps, and `started_at`/`ended_at`
+  for the timer. It lives in the session and is saved to SQLite after every turn (`db.py`).
+  - **Merge rules** (`apply_analysis()`): the analyst only sees the last 6 messages, so one odd
+    answer mustn't undo the case.
+    - A specific scam type is sticky. It can change to another specific type, but never falls
+      back to `other`. (The analyst prompt also says to keep a clear type.)
+    - Risk drops by at most 5 per turn (`MAX_RISK_DROP`). The one exception: the analyst says
+      `not_scam` with risk under 30 (`INNOCENT_RISK`), and then its score is taken as is.
+    - An injection attempt lifts risk to 10 above the higher of the new and previous scores
+      (`INJECTION_RISK_BUMP`), capped at 100. "prompt injection attempt" then stays in the
+      signals for the rest of the call.
+    - If the analyst fails, type and risk stay as they were (risk history still gets an entry).
+    - The orchestrator hands the analyst the **merged** view as its "previous analysis" next
+      turn, not its own raw answer.
+    - `tests/test_case_merge.py` replays the SBI KYC + OTP + injection call with stubbed LLMs.
+      `LIVE=1 pytest` also runs it against Groq.
+- **Reporter** (`reporter.py`): at the end of the call, turns the case file into a `Complaint`
+  (sections of `{label, value, hint}`) laid out like the cybercrime.gov.in form.
+  - **Plain code** fills every field: category/sub-category from `CATEGORIES` (default
+    *Online Financial Fraud › Fraud Call/Vishing*; the names are from memory and should be
+    checked against the live portal), date/time in IST, suspect identifiers (with their turn),
+    amounts and amount lost ₹0. **Complainant fields stay blank** ("Your name"…) because the
+    app never collects the user's details.
+  - **The LLM** (`reporter` role) writes only the "additional information" text (200–1500
+    chars). `check_narrative()` rejects it if it names any phone, UPI ID or link that isn't in
+    the evidence, or if it's a refusal or too short. Then `template_narrative()` is used, so a
+    complaint always comes out. gpt-oss writes non-breaking hyphens (U+2011), which are
+    turned into "-" before the check, or they'd split IDs.
+  - It tells the model which speaker is which, or it reports Dadaji's stalling questions as
+    the scammer's.
 - **Guardrail** (`guardrail.py`): two checks.
   - **Input:** Groq's `meta-llama/llama-prompt-guard-2-86m` (`PROMPT_GUARD_MODEL`) returns a
     bare probability string (`"0.9996"`), and anything above 0.5 is flagged. **It misses
@@ -70,14 +96,16 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
   - `ollama`: Gemma (`gemma3:4b`) for every role, for an offline, private mode. Whisper and
     Prompt Guard still use Groq if a key is set, so voice mode isn't fully offline.
 - **Each agent role has its own model** (`config.MODELS`, overridable with `DADAJI_MODEL`,
-  `ANALYST_MODEL`, `EVIDENCE_MODEL`), because **Groq's free tier allows 8,000 tokens/min per
+  `ANALYST_MODEL`, `EVIDENCE_MODEL`, `REPORTER_MODEL`), because **Groq's free tier allows 8,000 tokens/min per
   model**. One model for everything would hit 429 errors within a minute.
   | role | Groq model | reasoning_effort |
   |---|---|---|
   | dadaji | `openai/gpt-oss-120b` | low |
   | analyst | `openai/gpt-oss-20b` | low |
   | evidence | `qwen/qwen3.8-27b` | none |
-  The only chat models left on Groq are these three (no llama). gpt-oss rejects `"none"` and
+  | reporter | `openai/gpt-oss-20b` | low |
+  The reporter shares the analyst's model: it runs once, after the call, when the analyst is
+  idle. The only chat models left on Groq are these three (no llama). gpt-oss rejects `"none"` and
   accepts low/medium/high only. Prompt Guard has its own 15k/min budget. A 6-turn scripted call
   at about 35 turns/min gave no 429s.
 - gpt-oss is a reasoning model, and its hidden reasoning counts toward `max_tokens`. Keep
@@ -86,7 +114,8 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
 - Front end: `frontend/index.html` + `call.js` + `dashboard.js` (served at `/static`). The call
   screen is on the left and the dashboard on the right, stacked on phones. The dashboard sets
   scammer text with `textContent` only, never `innerHTML`.
-- Deploy on Render.
+- Deploy on Render. Its free tier wipes the disk on every deploy, so saved cases don't survive
+  a redeploy. That's fine for the demo.
 - Everything free and open source under the MIT licence. Secrets go in `.env` (git-ignored),
   and `.env.example` documents them.
 
@@ -111,15 +140,40 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
 - Headless Chrome's `--use-file-for-fake-audio-capture` gives silence on macOS. For automated
   tests, override `getUserMedia` with a Web Audio stream that plays a WAV instead.
 
+## End of call, SQLite, reporter (milestone 4)
+
+- `POST /api/call/end` → `orchestrator.end_call()`:
+  1. stamps `ended_at` first, so the timer stops when End was pressed;
+  2. waits up to 2 s (`EVIDENCE_WAIT`) for the call's evidence tasks (`session["pending"]`).
+     If any are still running (Groq rate limits), the regex net runs over every scammer
+     message, so the complaint still gets the identifiers;
+  3. writes the complaint and saves case + complaint.
+  A double click shares one `session["ending"]` task. `/api/chat` on an ended call returns 409.
+- `db.py`: stdlib `sqlite3`, one `cases` row per call with the whole case file as JSON (no
+  migrations when `CaseFile` changes) and the complaint as `report_json`. A save without a
+  report keeps the old one. Calls run in `asyncio.to_thread` so the event loop isn't blocked.
+  `DB_PATH` defaults to `data/cases.db` (git-ignored). Tests get a throwaway database from
+  `tests/conftest.py`.
+- Routes: `GET /api/cases/{id}` (memory first, then SQLite, so it works after a restart),
+  `/api/cases/{id}/report?format=json|txt` (a download; `attach=false` for Copy all),
+  `/api/cases/{id}/transcript` (.txt, to attach as evidence), `/api/stats` (ended calls with
+  at least one scammer turn, and their total seconds).
+- Timer: each WebSocket message carries the server's `now`, and the browser keeps the
+  difference from its own clock, so the timer is right even if the phone's clock is off. It
+  ticks locally every second and freezes at `ended_at`. The running total is underneath.
+- Complaint card: shown after End call, a Copy button per field (the portal is a form), Copy
+  all, and the downloads. Hidden again when a new call starts.
+
 ## Live dashboard (milestone 2)
 
 - `WS /ws/{session_id}` sends a snapshot on connect, then `dashboard.publish()` pushes
-  `{"type": "case", "case": {...}}` after every pipeline step. It always sends the **whole**
+  `{"type": "case", "case": {...}, "now": <server time>}` after every pipeline step. It always sends the **whole**
   case file, and the page re-renders. The turn itself stays plain HTTP (`/api/chat`), and the
   WebSocket only pushes updates to the display.
 - `dashboard.js` reconnects every 2 s during a call and gives up on close code 4404 (the server
-  restarted, so the session is gone). After End call, the last case file stays on screen.
-- Panels: risk (number, colour, sparkline), scam type + signals, director's note, evidence
+  restarted, so the session is gone). After End call, the last case file stays on screen,
+  with the complaint card.
+- Panels: time wasted (+ running total), complaint (after End call), risk (number, colour, sparkline), scam type + signals, director's note, evidence
   (dashed chips = found by the regex net), guardrail log, stage timings.
 
 ## Layout
@@ -134,7 +188,9 @@ backend/
   evidence.py      tool-calling evidence agent + regex extractors
   guardrail.py     injection check (input) + leak/character filter (output)
   case_file.py     CaseFile model
-  orchestrator.py  handle_turn(): the asyncio pipeline
+  orchestrator.py  handle_turn(): the asyncio pipeline; end_call()
+  reporter.py      case file → cybercrime.gov.in complaint (+ transcript text)
+  db.py            SQLite storage for case files and complaints
   dashboard.py     WebSocket hub (subscribers, publish)
   stt.py           Groq Whisper speech-to-text
   main.py          FastAPI app: routes, sessions, WebSocket, static files
@@ -142,7 +198,8 @@ frontend/
   index.html       layout + styles
   call.js          call screen, mic, TTS
   dashboard.js     live case-file dashboard
-tests/             pytest unit tests (no network): guardrail, evidence regexes, trim_reply
+tests/             pytest unit tests (no network): guardrail, evidence regexes, trim_reply,
+                   case merge rules, SQLite, reporter
 ```
 
 ## Commands
@@ -161,7 +218,7 @@ pip install -r requirements-dev.txt && pytest   # unit tests, about 0.3 s, no ne
 2. [x] Analyst, evidence and guardrail agents + live dashboard over WebSocket
 3. [x] Voice (Whisper STT + browser TTS) and the "talk to my grandfather" handoff button
    (built before M2 by choice; M2 slots in between `/api/transcribe` and the TTS step)
-4. [ ] Reporter + time-wasted timer
+4. [x] Reporter + SQLite + time-wasted timer
 5. [ ] Grumpy/Confused personas with a picker, the scream finale, deploy to Render
 6. [ ] Stretch goal: eval script that runs 10 scripted scam calls and reports classification
    accuracy and data leaks

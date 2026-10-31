@@ -1,5 +1,6 @@
 """Settings read from environment variables (and .env)."""
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
 
@@ -7,7 +8,7 @@ load_dotenv()
 
 # Each agent ("role") gets its own model. On Groq's free tier every model has its own
 # 8,000 tokens/minute budget, so spreading the agents out avoids rate-limit errors.
-ROLES = ("dadaji", "analyst", "evidence")
+ROLES = ("dadaji", "analyst", "evidence", "reporter")
 
 # Each provider speaks the OpenAI chat API, so only the URL, models and key differ.
 # models: role -> (model, reasoning_effort). Reasoning models "think" before answering;
@@ -20,6 +21,8 @@ PROVIDERS = {
             "dadaji": ("openai/gpt-oss-120b", "low"),  # best Hinglish, stays in character
             "analyst": ("openai/gpt-oss-20b", "low"),  # fast JSON classification
             "evidence": ("qwen/qwen3.8-27b", "none"),  # tool calling, no thinking needed
+            # Runs once, after the call, when the analyst is idle, so sharing its budget is fine.
+            "reporter": ("openai/gpt-oss-20b", "low"),
         },
     },
     "ollama": {
@@ -38,7 +41,7 @@ LLM_BASE_URL = os.getenv("LLM_BASE_URL", _provider["base_url"])
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 LLM_API_KEY = os.getenv(_provider["api_key_env"]) if _provider["api_key_env"] else "ollama"
 
-# Per-role overrides: DADAJI_MODEL, ANALYST_MODEL, EVIDENCE_MODEL (+ *_REASONING_EFFORT;
+# Per-role overrides: DADAJI_MODEL, ANALYST_MODEL, EVIDENCE_MODEL, REPORTER_MODEL (+ *_REASONING_EFFORT;
 # set it empty to stop sending it). LLM_MODEL / LLM_REASONING_EFFORT still work for Dadaji.
 MODELS: dict[str, str] = {}
 REASONING: dict[str, str | None] = {}
@@ -56,3 +59,6 @@ PROMPT_GUARD_MODEL = os.getenv("PROMPT_GUARD_MODEL", "meta-llama/llama-prompt-gu
 # Speech-to-text always uses Groq Whisper (Ollama has no Whisper).
 GROQ_BASE_URL = os.getenv("STT_BASE_URL", PROVIDERS["groq"]["base_url"])
 STT_MODEL = os.getenv("STT_MODEL", "whisper-large-v3-turbo")
+
+# Case files are saved here (SQLite: a single file, no server). The folder is git-ignored.
+DB_PATH = os.getenv("DB_PATH", str(Path(__file__).resolve().parent.parent / "data" / "cases.db"))

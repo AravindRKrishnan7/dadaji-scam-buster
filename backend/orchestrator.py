@@ -3,22 +3,21 @@
     scammer text ─┬─ evidence (background task, publishes when done) ──────────────┐
                   ├─ guardrail input check ┐ asyncio.gather                        │
                   └─ analyst ──────────────┴─> tactic ─> Dadaji ─> guardrail output ─> reply
-Dashboard updates are pushed at each step.
+Dashboard updates are pushed at each step, and the case file is saved after each turn.
+end_call() wraps the call up: it waits for evidence, ends the case, writes the complaint, saves.
 """
 import asyncio
 import logging
 import random
 import time
 
-from backend import analyst, dashboard, evidence, guardrail
+from backend import analyst, dashboard, db, evidence, guardrail, reporter
 from backend.dadaji import dadaji_reply
 from backend.personas import PERSONAS
 
 log = logging.getLogger("uvicorn.error")
 
-# Keep references to background tasks: asyncio only holds weak ones, so an unreferenced
-# task can be garbage-collected before it finishes.
-_background: set[asyncio.Task] = set()
+EVIDENCE_WAIT = 2  # seconds end_call() waits for evidence still being collected
 
 
 async def _analyse(session: dict) -> analyst.Analysis | None:
@@ -29,15 +28,20 @@ async def _analyse(session: dict) -> analyst.Analysis | None:
         return None
 
 
+def _regex_findings(text: str) -> evidence.Findings:
+    findings = evidence.Findings()
+    for kind, extract in evidence.EXTRACTORS.values():
+        findings.add(kind, extract(evidence.normalise(text)), "regex")
+    return findings
+
+
 async def _collect_evidence(case, turn: int, text: str):
     start = time.perf_counter()
     try:
         findings = await evidence.run(text)
     except Exception:
         log.exception("Evidence agent failed; using regexes only")
-        findings = evidence.Findings()
-        for kind, extract in evidence.EXTRACTORS.values():
-            findings.add(kind, extract(evidence.normalise(text)), "regex")
+        findings = _regex_findings(text)
     case.add_evidence(turn, findings)
     case.timings["evidence"] = round(time.perf_counter() - start, 2)
     await dashboard.publish(case)
@@ -52,9 +56,11 @@ async def handle_turn(session: dict, text: str) -> str:
     await dashboard.publish(case)
 
     # Evidence starts now and runs alongside everything else; Dadaji doesn't wait for it.
+    # The session keeps a reference to the task: asyncio only holds weak ones, so an
+    # unreferenced task can be garbage-collected before it finishes. end_call() waits on these.
     task = asyncio.create_task(_collect_evidence(case, turn, text))
-    _background.add(task)
-    task.add_done_callback(_background.discard)
+    session["pending"].add(task)
+    task.add_done_callback(session["pending"].discard)
 
     # The injection check and the analyst run in parallel; Dadaji needs both.
     start = time.perf_counter()
@@ -96,5 +102,30 @@ async def handle_turn(session: dict, text: str) -> str:
     session["history"].append({"role": "assistant", "content": reply})
     case.add_message("dadaji", reply)
     await dashboard.publish(case)
+    await _save(case)
     log.info("turn %d: %s", turn, case.timings)
     return reply
+
+
+async def _save(case, report: dict | None = None):
+    try:
+        await db.save(case, report)
+    except Exception:  # a full disk shouldn't end the call; the case is still in memory
+        log.exception("Saving case %s failed", case.session_id)
+
+
+async def end_call(session: dict):
+    case = session["case"]
+    case.ended_at = time.time()  # first, so the timer stops at the moment End call was pressed
+    if session["pending"]:
+        _, late = await asyncio.wait(session["pending"], timeout=EVIDENCE_WAIT)
+        if late:
+            # The evidence agent is slow (rate-limited?). Run the regex net over everything the
+            # scammer said, so the complaint still gets the numbers and IDs.
+            log.warning("%d evidence task(s) still running at end of call; using regexes", len(late))
+            said = [m["text"] for m in case.transcript if m["role"] == "scammer"]
+            for turn, text in enumerate(said, start=1):
+                case.add_evidence(turn, _regex_findings(text))
+    await dashboard.publish(case)
+    session["report"] = (await reporter.build(case)).model_dump()
+    await _save(case, session["report"])

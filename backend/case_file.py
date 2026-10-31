@@ -1,6 +1,7 @@
 """Case file: everything learned about one call, built up turn by turn.
 
-The dashboard renders it live; in milestone 4 the reporter turns it into a complaint.
+The dashboard renders it live, db.py saves it, and at the end of the call the reporter
+turns it into a complaint.
 """
 import time
 
@@ -20,7 +21,8 @@ INJECTION_SIGNAL = "prompt injection attempt"
 class CaseFile(BaseModel):
     session_id: str
     persona: str
-    started_at: float = Field(default_factory=time.time)
+    started_at: float = Field(default_factory=time.time)  # the handoff: Dadaji picked up
+    ended_at: float | None = None            # set by End call; stops the time-wasted timer
     turns: int = 0                           # scammer turns so far
     scam_type: str = "unknown"
     risk_score: int = 0

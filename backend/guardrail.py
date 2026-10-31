@@ -26,7 +26,7 @@ INJECTION_PHRASES = re.compile(r"""
   | you\s+are\s+now\b
   | pretend\s+(?:to\s+be|you\s+are)
   | (?:reveal|print|show)\s+(?:me\s+)?(?:your\s+)?(?:prompt|instructions)
-  | (?:rules|instructions|niyam)\s+(?:bhool|bhul|chhod)
+  | (?:rules|rools|instructions|niyam)\s+(?:bhool|bhul|chhod)  # rools: romanised रूल्स
   | (?:tum|aap)\s+(?:ab\s+)?(?:ek\s+)?(?:ai|bot|robot|assistant)\s+(?:ho|hai)
 """, re.I | re.X)
 
@@ -88,9 +88,9 @@ def clean(text: str) -> str:
 
 # Spoken digits ("nine eight seven six", "ek do teen char") count as numbers too.
 NUMBER_WORDS = {
-    "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6",
+    "zero": "0", "shoonya": "0", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6",
     "seven": "7", "eight": "8", "nine": "9", "shunya": "0", "ek": "1", "do": "2", "teen": "3",
-    "char": "4", "chaar": "4", "panch": "5", "paanch": "5", "chhe": "6", "chheh": "6",
+    "char": "4", "chaar": "4", "panch": "5", "paanch": "5", "chhe": "6", "chheh": "6", "chhah": "6",
     "saat": "7", "aath": "8", "nau": "9",
 }
 _NUM_TOKEN = r"(?:\d+|" + "|".join(sorted(NUMBER_WORDS, key=len, reverse=True)) + r")"

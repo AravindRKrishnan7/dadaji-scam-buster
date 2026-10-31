@@ -35,6 +35,24 @@ class ChatResponse(BaseModel):
     reply: str
 
 
+class CallStartRequest(BaseModel):
+    persona: str = DEFAULT_PERSONA
+
+
+class CallStartResponse(BaseModel):
+    session_id: str
+    persona: str
+    greeting: str
+
+
+def new_session(persona: str) -> tuple[str, dict]:
+    if persona not in PERSONAS:
+        raise HTTPException(400, f"Unknown persona {persona!r}")
+    session_id = str(uuid.uuid4())
+    sessions[session_id] = {"persona": persona, "history": []}
+    return session_id, sessions[session_id]
+
+
 @app.get("/")
 def index():
     return FileResponse(FRONTEND_DIR / "index.html")
@@ -50,15 +68,21 @@ def list_personas():
     return [{"key": p.key, "name": p.name, "description": p.description} for p in PERSONAS.values()]
 
 
+@app.post("/api/call/start", response_model=CallStartResponse)
+def call_start(req: CallStartRequest):
+    """The handoff: Dadaji picks up. His greeting goes into history so the LLM knows he said it."""
+    session_id, session = new_session(req.persona)
+    greeting = PERSONAS[req.persona].greeting
+    session["history"].append({"role": "assistant", "content": greeting})
+    return CallStartResponse(session_id=session_id, persona=req.persona, greeting=greeting)
+
+
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat_endpoint(req: ChatRequest):
     # Reuse the session if the client sent a known id, otherwise start a new call.
     session = sessions.get(req.session_id or "")
     if session is None:
-        if req.persona not in PERSONAS:
-            raise HTTPException(400, f"Unknown persona {req.persona!r}")
-        session_id = str(uuid.uuid4())
-        session = sessions[session_id] = {"persona": req.persona, "history": []}
+        session_id, session = new_session(req.persona)
     else:
         session_id = req.session_id
 

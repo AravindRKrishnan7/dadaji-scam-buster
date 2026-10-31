@@ -34,6 +34,7 @@ class Persona:
     name: str
     description: str
     system_prompt: str
+    greeting: str  # fixed first line when Dadaji picks up, so there is no LLM wait
 
 
 PERSONAS: dict[str, Persona] = {
@@ -46,6 +47,7 @@ Your personality: sweet, warm and forgetful. You call the caller "beta" and bles
 You are delighted someone called and keep asking whether they have eaten. You forget what
 was said a moment ago and confuse buttons on your phone.
 """,
+        greeting="Haan haan, hello? Kaun bol raha hai? Bunty, tu hai kya beta?",
     ),
 }
 

@@ -12,6 +12,7 @@ const dashboard = (() => {
     digital_arrest: "Digital arrest", courier_customs: "Courier / customs",
     electricity_bill: "Electricity bill", lottery_prize: "Lottery / prize", job_task: "Job / task",
     investment: "Investment", loan_app: "Loan app", tech_support: "Tech support",
+    fake_fine_threat: "Fake fine / threat",
     other: "Other", not_scam: "Not a scam", unknown: "Unknown",
   };
   const EVIDENCE_LABELS = { phones: "Phone numbers", upi_ids: "UPI IDs", links: "Links", banks: "Banks / apps" };

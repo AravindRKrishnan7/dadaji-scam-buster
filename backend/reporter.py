@@ -31,7 +31,7 @@ SCAM_LABELS = {
     "digital_arrest": "Digital arrest", "courier_customs": "Courier / customs",
     "electricity_bill": "Electricity bill", "lottery_prize": "Lottery / prize",
     "job_task": "Job / task", "investment": "Investment", "loan_app": "Loan app",
-    "tech_support": "Tech support", "other": "Other fraud call", "not_scam": "Not a scam",
+    "tech_support": "Tech support", "fake_fine_threat": "Fake fine / threat", "other": "Other fraud call", "not_scam": "Not a scam",
     "unknown": "Unknown",
 }
 
@@ -45,6 +45,7 @@ CATEGORIES = {
     "digital_arrest": (SOCIAL, "Cheating by Impersonation"),
     "courier_customs": (SOCIAL, "Cheating by Impersonation"),
     "job_task": (SOCIAL, "Online Job Fraud"),
+    "fake_fine_threat": (SOCIAL, "Cheating by Impersonation"),
 }  # everything else is a fraud phone call: VISHING
 
 IDENTIFIERS = {  # case-file evidence kind -> how the portal calls it

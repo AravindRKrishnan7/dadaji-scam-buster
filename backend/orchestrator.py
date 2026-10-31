@@ -68,7 +68,8 @@ async def handle_turn(session: dict, text: str) -> str:
     case.timings["analysis"] = round(time.perf_counter() - start, 2)
     if guard.flagged:
         case.injection_attempts.append({"turn": turn, "source": guard.source, "score": guard.score})
-    case.apply_analysis(analysis, injection=guard.flagged)
+    floor = analyst.risk_floor([m["text"] for m in case.transcript if m["role"] == "scammer"])
+    case.apply_analysis(analysis, injection=guard.flagged, floor=floor)
     if analysis:
         # The analyst's next turn should build on the merged (sticky) view, not its raw answer.
         session["analysis"] = analysis.model_copy(

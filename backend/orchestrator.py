@@ -12,7 +12,7 @@ import random
 import time
 
 from backend import analyst, dashboard, db, evidence, guardrail, reporter
-from backend.dadaji import dadaji_reply
+from backend.dadaji import asked_to_repeat, dadaji_reply, recent_replies
 from backend.personas import PERSONAS
 
 log = logging.getLogger("uvicorn.error")
@@ -68,15 +68,18 @@ async def handle_turn(session: dict, text: str) -> str:
     case.timings["analysis"] = round(time.perf_counter() - start, 2)
     if guard.flagged:
         case.injection_attempts.append({"turn": turn, "source": guard.source, "score": guard.score})
-    case.apply_analysis(analysis, injection=guard.flagged)
+    floor = analyst.risk_floor([m["text"] for m in case.transcript if m["role"] == "scammer"])
+    case.apply_analysis(analysis, injection=guard.flagged, floor=floor)
     if analysis:
         # The analyst's next turn should build on the merged (sticky) view, not its raw answer.
         session["analysis"] = analysis.model_copy(
             update={"scam_type": case.scam_type, "risk_score": case.risk_score, "signals": case.signals})
+    repeated = asked_to_repeat(session["history"])
     if guard.flagged:
         tactic = "baffled_by_jargon"
     else:
-        tactic = analysis.stall_tactic if analysis else analyst.DEFAULT_TACTIC
+        tactic = analyst.pick_tactic(analysis.stall_tactic if analysis else None,
+                                     case.tactics_used, repeated)
     case.stall_tactic = tactic
     case.stall_note = analyst.TACTICS[tactic][1]
     case.tactics_used.append(tactic)
@@ -84,18 +87,23 @@ async def handle_turn(session: dict, text: str) -> str:
 
     persona = PERSONAS[session["persona"]]
     note = analyst.tactic_note(tactic)
+    if repeated:
+        note += " Don't ask them to repeat or speak up this time."
+    # Canned lines he said recently are skipped, so a run of failures doesn't loop one line.
+    recent = recent_replies(session["history"], 3)
+    fallbacks = tuple(f for f in persona.fallbacks if f not in recent) or persona.fallbacks
     start = time.perf_counter()
     try:
         # The guardrail cleans and checks the draft, retrying once before a canned stall line.
         reply, blocks = await guardrail.safe_reply(
             lambda feedback: dadaji_reply(session["persona"], session["history"],
                                           [note] + ([feedback] if feedback else [])),
-            persona.fallbacks,
+            fallbacks,
         )
     except Exception:
         # Rate limit or network error: stay in character instead of breaking the call.
         log.exception("Dadaji failed; using a fallback line")
-        reply, blocks = random.choice(persona.fallbacks), []
+        reply, blocks = random.choice(fallbacks), []
     case.timings["dadaji"] = round(time.perf_counter() - start, 2)
     case.guardrail_blocks += [{"turn": turn, **b} for b in blocks]
 
@@ -117,6 +125,8 @@ async def _save(case, report: dict | None = None):
 async def end_call(session: dict):
     case = session["case"]
     case.ended_at = time.time()  # first, so the timer stops at the moment End call was pressed
+    # The browser speaks the finale itself (no waiting); it's recorded here for the transcript.
+    case.add_message("dadaji", PERSONAS[session["persona"]].finale)
     if session["pending"]:
         _, late = await asyncio.wait(session["pending"], timeout=EVIDENCE_WAIT)
         if late:

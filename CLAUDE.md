@@ -25,17 +25,50 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
 - **Dadaji**: 78-year-old retired railway clerk. Speaks Hinglish (Romanized Hindi + English)
   in short 1–3 sentence replies. Stalls with confusion and tangents. Never shares real data,
   never reveals he is an AI, never uses abusive language.
-  - Personas live in `backend/personas.py`. Each has a name, description and system prompt,
-    and the persona is chosen per session. The shared safety rules sit in one base prompt.
-  - Sweet Dadaji (forgetful and loving) is the default.
-  - Later: Grumpy Dadaji (argues and lectures, never abusive), Confused Dadaji (thinks the
-    scammer is his long-lost nephew).
+  - Personas live in `backend/personas.py`. Each has a name, description, system prompt,
+    `greeting`, `fallbacks`, `finale` (his last line before the scream) and a `reminder`. The
+    persona is chosen per session with the picker on the call screen.
+    - Sweet Dadaji (forgetful and loving) is the default.
+    - Grumpy Dadaji argues and lectures about "aajkal ke bachche", but never insults anyone.
+    - Confused Dadaji is sure the caller is Pappu, his late brother Shyam's son who ran off
+      to Bombay 25 years ago.
+  - `BASE_RULES` holds the shared rules:
+    - a **fixed family**: grandson Bunty (handles "phone matters") and daughter-in-law Sunita
+      (chai, the bank passbook). He never invents other relatives; Pappu is Confused only.
+    - **Roman letters only**;
+    - **varied stalls**;
+    - he can cheerfully read out **at most 3 made-up digits** ("4... 4...") and then lose his
+      place. The output guardrail already allows that (it needs 4+ digits, or 3 in a row
+      after OTP/PIN), so it didn't need changing.
+  - The stall tactic note used to drown out the personality: Grumpy stopped grumbling and
+    Confused forgot Pappu. So every reply's notes end with the persona's `reminder`, and the
+    note says "in your own personality".
+  - **Variety, in code:**
+    - `dadaji.variety_note()` shows him how his last 3 replies began.
+    - `asked_to_repeat()` (the `REPEAT_ASK` regex over his last 2 replies) bans the
+      `hard_of_hearing` tactic and adds "don't ask them to repeat".
+    - `analyst.pick_tactic()` enforces both bans and rotates through `ROTATION` when the
+      analyst fails or its pick is banned.
+    - Fallback lines he said recently aren't reused.
 - **Analyst** (`analyst.py`): JSON mode, reading the last 6 messages + the previous analysis →
   `{scam_type, risk_score, signals[], stall_tactic}`, validated by pydantic (unknown values are
   coerced, not rejected). Tactics come from the `TACTICS` catalogue (key → when to use it, plus
   Dadaji's instruction), with no repeats from the last 2 turns. Dadaji gets the tactic as a
   one-off system note after the history. Risk is calibrated to stay under 30 until money, codes,
-  details, an app or threats come up.
+  details, an app or threats come up. `fake_fine_threat` is a scam type.
+  - **Risk floor** (`risk_floor()`, a rule in code): the caller claims a bank or government
+    body (`CLAIM`: an authority word near "se bol raha", officer, department…) **and** either
+    asks for account/card details, an OTP/PIN or money, **or** threatens a fine or arrest.
+    - It's checked over **all** scammer messages, because the claim and the demand often
+      come in different turns.
+    - When it hits, risk is at least 75 (`RISK_FLOOR`), the `not_scam` reset can't apply, and
+      a type of other/unknown/not_scam becomes `FloorHit.scam_type`: arrest →
+      `digital_arrest`, fine → `fake_fine_threat`, OTP → `otp_fraud`, bank → `bank_kyc`,
+      otherwise `fake_fine_threat`. The signal "authority claim + demand/threat (rule)" is
+      added.
+    - "fine" only counts next to an amount or lagega/bharna ("main fine hoon" is not a
+      threat), and FIR only in capitals ("fir se" is Hinglish for "again").
+    - `tests/test_risk_floor.py` covers the SBI claim → account request → ₹10 lakh fine call.
 - **Evidence** (`evidence.py`): tool calling on the latest scammer message only. Finder tools
   take no arguments (they scan that message): `find_phone_numbers`, `find_upi_ids`, `find_links`,
   `find_bank_names`. There's also `record_context` for the claimed identity, amount and payment
@@ -57,6 +90,7 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
       (`INJECTION_RISK_BUMP`), capped at 100. "prompt injection attempt" then stays in the
       signals for the rest of the call.
     - If the analyst fails, type and risk stay as they were (risk history still gets an entry).
+    - Last, the risk floor (see Analyst) is applied.
     - The orchestrator hands the analyst the **merged** view as its "previous analysis" next
       turn, not its own raw answer.
     - `tests/test_case_merge.py` replays the SBI KYC + OTP + injection call with stubbed LLMs.
@@ -73,8 +107,8 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
     the evidence, or if it's a refusal or too short. Then `template_narrative()` is used, so a
     complaint always comes out. gpt-oss writes non-breaking hyphens (U+2011), which are
     turned into "-" before the check, or they'd split IDs.
-  - It tells the model which speaker is which, or it reports Dadaji's stalling questions as
-    the scammer's.
+  - The LLM sees **only the scammer's lines**. When it got Dadaji's lines too, it credited his
+    stalling ("where are my glasses?") to the scammer, even when told not to.
 - **Guardrail** (`guardrail.py`): two checks.
   - **Input:** Groq's `meta-llama/llama-prompt-guard-2-86m` (`PROMPT_GUARD_MODEL`) returns a
     bare probability string (`"0.9996"`), and anything above 0.5 is flagged. **It misses
@@ -84,8 +118,11 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
   - **Output:** `clean()` strips emojis, *actions*, (asides) and a name prefix. Then
     `find_problems()` blocks 5+ digits and 4 digits (unless a year 1900–2099 or near
     ₹/rupaye/lakh). It always blocks anything near OTP/PIN/CVV, Luhn-valid cards, PAN, IFSC,
-    UPI or email strings, AI reveals and abuse. Spoken digits ("ek do teen char") count.
-    `safe_reply()` retries once with the reasons, then uses a persona fallback line.
+    UPI or email strings, AI reveals, and abuse, including name-calling (bewakoof, nalayak…,
+    for Grumpy). Spoken digits ("ek do teen char") count.
+    - gpt-oss sometimes adds a Devanagari sentence. `clean()` drops Devanagari and Urdu
+      sentences; if nothing Roman is left, the problem is "non-Roman script".
+    - `safe_reply()` retries once with the reasons, then uses a persona fallback line.
 
 ## Stack
 
@@ -127,6 +164,15 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
 - STT is `whisper-large-v3-turbo` (`STT_MODEL`) and **always uses Groq**, even when
   `LLM_PROVIDER=ollama`, because Ollama has no Whisper. With no key, it returns a 503 and the UI
   falls back to typing.
+- Whisper runs with `language="hi"`. Left to guess, it sometimes wrote Hinglish in Urdu
+  script, but with Hindi it writes Devanagari, so `translit.to_roman()` romanises every
+  transcript. That's a letter table plus Hindi schwa deletion: आठ → aath, करना → karna, a
+  cluster ending in य/र/व keeps its "a" (शून्य → shoonya), हूँ → hoon. Without this, injection
+  phrases, spoken numbers and evidence regexes would miss Devanagari. Romanised spellings
+  differ ("rools", "baink", "pulis", "nambar"), so the regexes include them.
+- The Whisper prompt (`PROMPT_HINT`) is written like a transcript in Roman Hinglish with the
+  scam words (KYC, OTP, UPI, account, fine, beta, Dadaji), because Whisper reads it as "the
+  text so far". Transcripts under 3 characters are dropped as noise.
 - Whisper invents "Thank you." for silence. Groq's `no_speech_prob` is always 0, so `stt.py`
   drops known filler phrases instead, and the browser only uploads clips with ≥0.5 s of speech.
 - Hands-free turn-taking: a volume (RMS) threshold that adapts to background noise, and 1.2 s
@@ -164,6 +210,25 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
 - Complaint card: shown after End call, a Copy button per field (the portal is a form), Copy
   all, and the downloads. Hidden again when a new call starts.
 
+## Personas, finale, typed calls (milestone 5)
+
+- **Finale** (End call in `call.js`):
+  1. `POST /api/call/end` starts immediately, while Dadaji talks.
+  2. The browser shows and speaks the persona's `finale` ("call record ho gayi… report bhi
+     ho gayi… Ab suno…").
+  3. `frontend/scream.wav` plays.
+  4. The complaint card appears.
+  `end_call()` adds the finale as the last transcript line.
+- Safari only allows audio that was started inside a click, so `unlockScream()` plays it
+  muted for a moment on the End click.
+- The scream comes from `scripts/make_scream.py`: stdlib only, a fixed seed, so it's
+  reproducible. It has a harmonic wail with vibrato through two formant filters, a whistle,
+  quiet breath noise and feedback echoes. The README credits it.
+- **Typed sessions:** End call appears after the first typed reply, and the handoff button
+  hides until then. So typed calls also get the finale and the complaint.
+- **Persona picker:** `#persona` is filled from `GET /api/personas` (which includes `finale`)
+  and locked while a call is open. The dashboard header shows the persona's name.
+
 ## Live dashboard (milestone 2)
 
 - `WS /ws/{session_id}` sends a snapshot on connect, then `dashboard.publish()` pushes
@@ -182,9 +247,9 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
 backend/
   config.py        env vars, provider + per-role model selection
   llm.py           shared clients (get_client, get_groq_client) + chat()/chat_message()
-  personas.py      Dadaji persona configs (prompt, greeting, fallbacks)
+  personas.py      Dadaji personas (prompt, greeting, fallbacks, finale, reminder)
   dadaji.py        Dadaji agent (prompt + one-off notes, trims replies)
-  analyst.py       scam classification + TACTICS catalogue
+  analyst.py       scam classification, TACTICS + pick_tactic(), risk_floor() rule
   evidence.py      tool-calling evidence agent + regex extractors
   guardrail.py     injection check (input) + leak/character filter (output)
   case_file.py     CaseFile model
@@ -192,14 +257,18 @@ backend/
   reporter.py      case file → cybercrime.gov.in complaint (+ transcript text)
   db.py            SQLite storage for case files and complaints
   dashboard.py     WebSocket hub (subscribers, publish)
-  stt.py           Groq Whisper speech-to-text
+  stt.py           Groq Whisper speech-to-text (Hindi, romanised, noise filter)
+  translit.py      Devanagari → Roman Hinglish for transcripts
   main.py          FastAPI app: routes, sessions, WebSocket, static files
 frontend/
   index.html       layout + styles
   call.js          call screen, mic, TTS
   dashboard.js     live case-file dashboard
+  scream.wav       the finale scream (generated)
+scripts/
+  make_scream.py   generates frontend/scream.wav (stdlib only)
 tests/             pytest unit tests (no network): guardrail, evidence regexes, trim_reply,
-                   case merge rules, SQLite, reporter
+                   case merge rules, SQLite, reporter, personas, STT/translit, risk floor
 ```
 
 ## Commands
@@ -219,8 +288,10 @@ pip install -r requirements-dev.txt && pytest   # unit tests, about 0.3 s, no ne
 3. [x] Voice (Whisper STT + browser TTS) and the "talk to my grandfather" handoff button
    (built before M2 by choice; M2 slots in between `/api/transcribe` and the TTS step)
 4. [x] Reporter + SQLite + time-wasted timer
-5. [ ] Grumpy/Confused personas with a picker, the scream finale, deploy to Render
-6. [ ] Stretch goal: eval script that runs 10 scripted scam calls and reports classification
+5. [x] Persona polish, Grumpy/Confused personas with a picker, the scream finale, typed End
+   call, Whisper fixes, risk floor rule
+6. [ ] Deploy to Render
+7. [ ] Stretch goal: eval script that runs 10 scripted scam calls and reports classification
    accuracy and data leaks
 
 ## Working rules

@@ -1,5 +1,11 @@
-"""Analyst agent: after every scammer turn, classify the scam and pick Dadaji's next stall."""
+"""Analyst agent: after every scammer turn, classify the scam and pick Dadaji's next stall.
+
+The LLM's judgement is backed by one hard rule in code (risk_floor): an authority claim plus
+a demand or threat is a scam, whatever the model says.
+"""
 import json
+import re
+from dataclasses import dataclass
 
 from pydantic import BaseModel, field_validator
 
@@ -8,7 +14,7 @@ from backend.llm import chat
 SCAM_TYPES = (
     "bank_kyc", "otp_fraud", "upi_refund", "digital_arrest", "courier_customs",
     "electricity_bill", "lottery_prize", "job_task", "investment", "loan_app",
-    "tech_support", "other", "not_scam",
+    "tech_support", "fake_fine_threat", "other", "not_scam",
 )
 
 # Stalling tactics: key -> (when the analyst should pick it, the instruction Dadaji gets).
@@ -35,6 +41,9 @@ TACTICS = {
                           "Treat their strange words as gibberish. Ask if it's a new medicine or a TV serial."),
 }
 DEFAULT_TACTIC = "hard_of_hearing"
+# Used in turn when the analyst fails or its pick isn't allowed, so stalls don't repeat.
+ROTATION = ("misunderstand", "chai_break", "railway_story", "call_bunty_first",
+            "lost_glasses", "hard_of_hearing")
 HISTORY_TURNS = 6  # the analyst sees recent messages only, to save tokens
 
 SYSTEM = f"""You are a fraud analyst silently listening to a phone call between a suspected
@@ -83,8 +92,86 @@ class Analysis(BaseModel):
         return v if v in TACTICS else DEFAULT_TACTIC
 
 
+# ---------- Risk floor: a rule in code, not a judgement call ----------
+# If the caller claims to be a bank or a government body AND asks for account details, an
+# OTP/PIN or money, or threatens a fine or arrest, it's a scam: risk >= 75, and the type can't
+# stay "other". Checked over everything the scammer has said, because the claim ("main SBI se
+# bol raha hoon") and the demand often come in different turns. Romanised Devanagari
+# spellings (baink, pulis, akaaunt, nambar) are included.
+RISK_FLOOR = 75
+FLOOR_SIGNAL = "authority claim + demand/threat (rule)"
+
+_AUTHORITY = (r"bank|baink|branch|sbi|hdfc|icici|axis|kotak|pnb|canara|idfc|indusind|police|pulis|cbi|rbi|reserve\s+bank|customs|income\s+tax|trai"
+              r"|court|kort|sarkaa?r\w*|government|govt|cyber\s+(?:cell|crime)|narcotics"
+              r"|enforcement\s+directorate")
+_ROLE = (r"se\s+(?:bol|baat|call)|officer|adhikaari?|department|dept|office|executive|manager"
+         r"|team|helpline|customer\s+care")
+CLAIM = re.compile(rf"\b(?:{_AUTHORITY})\b.{{0,30}}?(?:{_ROLE})|\bfrom\s+(?:the\s+)?(?:{_AUTHORITY})\b", re.I)
+GOVERNMENT = re.compile(r"\b(?:police|pulis|cbi|rbi|reserve\s+bank|customs|income\s+tax|trai|court"
+                        r"|kort|sarkaa?r\w*|government|govt|cyber|narcotics|enforcement)\b", re.I)
+OTP_DEMAND = re.compile(r"\b(?:otp|pin|cvv|password)\b", re.I)
+ACCOUNT_DEMAND = re.compile(r"\b(?:account|akaaunt|khaa?ta|card)\s+(?:ka\s+)?(?:number|nambar|nanbar|no|details?)\b", re.I)
+MONEY_DEMAND = re.compile(r"\b(?:bhejo|bhejiye|bhej\s+do|transfer|deposit|pay\s+kar\w*|payment\s+kar\w*)\b", re.I)
+_AMOUNT = r"(?:\d|lakh|laakh|hazaa?r|crore|rupa\w*|rs\b|₹)"
+FINE_THREAT = re.compile(rf"\b(?:jurmaa?na|penalty|challan)\b|{_AMOUNT}\W*(?:\w+\W+){{0,3}}fine\b"
+                         r"|\bfine\W+(?:\w+\W+){0,2}(?:lag|bhar|dena|pay)", re.I)
+ARREST_THREAT = re.compile(r"\b(?:arrest\w*|giraa?ftaa?r\w*|jail|warrant)\b|\bFIR\b", re.I)
+
+
+@dataclass
+class FloorHit:
+    authority: str      # "bank" or "government"
+    demand: str | None  # "otp", "account" or "money"
+    threat: str | None  # "arrest" or "fine"
+
+    @property
+    def scam_type(self) -> str:
+        """The type to use when the analyst has none better ("other", "unknown", "not_scam")."""
+        if self.threat == "arrest":
+            return "digital_arrest"
+        if self.threat == "fine":
+            return "fake_fine_threat"
+        if self.demand == "otp":
+            return "otp_fraud"
+        return "bank_kyc" if self.authority == "bank" else "fake_fine_threat"
+
+
+def _authority(text: str) -> str | None:
+    claim = CLAIM.search(text)
+    if not claim:
+        return None
+    if GOVERNMENT.search(claim.group()):
+        return "government"
+    return "bank"  # "bank", "branch" or a named bank ("SBI se bol raha hoon")
+
+
+def risk_floor(scammer_texts: list[str]) -> FloorHit | None:
+    authority = demand = threat = None
+    for text in scammer_texts:
+        authority = authority or _authority(text)
+        if not demand:
+            demand = ("otp" if OTP_DEMAND.search(text) else "account" if ACCOUNT_DEMAND.search(text)
+                      else "money" if MONEY_DEMAND.search(text) else None)
+        if not threat:
+            threat = ("arrest" if ARREST_THREAT.search(text) else "fine" if FINE_THREAT.search(text)
+                      else None)
+    if authority and (demand or threat):
+        return FloorHit(authority, demand, threat)
+    return None
+
+
 def tactic_note(key: str) -> str:
     return "Stalling tactic: " + TACTICS[key][1]
+
+
+def pick_tactic(proposed: str | None, recent: list[str], asked_to_repeat: bool) -> str:
+    """The analyst's pick (None if it failed), unless it was used in the last 2 turns or it's
+    hard_of_hearing right after Dadaji already asked them to repeat. Otherwise rotate."""
+    banned = set(recent[-2:]) | ({"hard_of_hearing"} if asked_to_repeat else set())
+    if proposed and proposed not in banned:
+        return proposed
+    start = len(recent) % len(ROTATION)
+    return next(k for k in ROTATION[start:] + ROTATION[:start] if k not in banned)
 
 
 async def run(history: list[dict], previous: Analysis | None, recent_tactics: list[str]) -> Analysis:
@@ -101,8 +188,4 @@ async def run(history: list[dict], previous: Analysis | None, recent_tactics: li
         [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}],
         role="analyst", temperature=0, max_tokens=800, response_format={"type": "json_object"},
     )
-    analysis = Analysis.model_validate(json.loads(raw))
-    if analysis.stall_tactic in recent:  # enforce the no-repeat rule if the model ignored it
-        analysis.stall_tactic = next(k for k in ("misunderstand", "chai_break", DEFAULT_TACTIC)
-                                     if k not in recent)
-    return analysis
+    return Analysis.model_validate(json.loads(raw))  # pick_tactic() enforces the no-repeat rule

@@ -2,6 +2,7 @@
 const $ = (id) => document.getElementById(id);
 const log = $("log"), input = $("input"), send = $("send"), pill = $("pill");
 const handoffBtn = $("handoff"), tapBtn = $("tap"), endBtn = $("end"), voiceSelect = $("voice");
+const personaSelect = $("persona");
 const levelBar = $("level").firstElementChild;
 
 let sessionId = null;
@@ -40,6 +41,24 @@ async function postJSON(url, body) {
   return data;
 }
 
+// ---------- Personas ----------
+let personas = {}; // key -> {key, name, description, finale}
+async function loadPersonas() {
+  try {
+    const list = await (await fetch("/api/personas")).json();
+    personas = Object.fromEntries(list.map((p) => [p.key, p]));
+    personaSelect.replaceChildren(...list.map((p) => {
+      const opt = new Option(p.name, p.key);
+      opt.title = p.description;
+      return opt;
+    }));
+    dashboard.setPersonas(list);
+  } catch { /* keep the built-in Sweet Dadaji option */ }
+}
+loadPersonas();
+// A call keeps the persona it started with, so the picker is locked until it ends.
+const lockPersona = (locked) => { personaSelect.disabled = locked; };
+
 // ---------- Text-to-speech ----------
 let voices = [];
 function loadVoices() {
@@ -70,6 +89,28 @@ function speak(text) {
     utterance.onend = utterance.onerror = () => { clearTimeout(timer); resolve(); };
     speechSynthesis.cancel();
     speechSynthesis.speak(utterance);
+  });
+}
+
+// ---------- The finale scream ----------
+const scream = new Audio("/static/scream.wav");
+scream.preload = "auto";
+
+// Safari only lets audio play later if it was started during a click. So on the End click,
+// play it silently for a moment; the real play after Dadaji's last line is then allowed.
+function unlockScream() {
+  scream.muted = true;
+  scream.play().then(() => { scream.pause(); scream.currentTime = 0; scream.muted = false; })
+    .catch(() => { scream.muted = false; });
+}
+
+function playScream() {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, 6000); // safety net, like speak()
+    scream.onended = scream.onerror = () => { clearTimeout(timer); resolve(); };
+    scream.muted = false;
+    scream.currentTime = 0;
+    scream.play().catch(() => { clearTimeout(timer); resolve(); });
   });
 }
 
@@ -205,9 +246,16 @@ async function scammerSays(text) {
   addMessage("Scammer", text, "me");
   setState("thinking");
   try {
-    const data = await postJSON("/api/chat", { message: text, session_id: sessionId, persona: "sweet" });
+    lockPersona(true);
+    const data = await postJSON("/api/chat", { message: text, session_id: sessionId, persona: personaSelect.value });
     sessionId = data.session_id;
     dashboard.watch(sessionId); // no-op if already watching this call
+    if (!inCall) {
+      // A typed-only session is a call too: it can be ended (finale + complaint).
+      // The handoff button hides until then, so the typed case isn't left open.
+      endBtn.hidden = false;
+      handoffBtn.hidden = true;
+    }
     addMessage("Dadaji", data.reply, "dadaji");
     if (inCall) {
       setState("speaking");
@@ -215,6 +263,7 @@ async function scammerSays(text) {
     }
   } catch (err) {
     addError(err.message);
+    if (!sessionId) lockPersona(false); // the first message failed: no call was started
   } finally {
     busy = false;
     send.disabled = false;
@@ -234,7 +283,8 @@ handoffBtn.addEventListener("click", async () => {
     addError("Microphone blocked or unavailable. Dadaji will still talk, and you can type.");
   }
   try {
-    const data = await postJSON("/api/call/start", { persona: "sweet" });
+    lockPersona(true);
+    const data = await postJSON("/api/call/start", { persona: personaSelect.value });
     sessionId = data.session_id;
     dashboard.watch(sessionId);
     inCall = true;
@@ -249,6 +299,7 @@ handoffBtn.addEventListener("click", async () => {
   } catch (err) {
     addError(err.message);
     stopMic();
+    lockPersona(false);
   } finally {
     handoffBtn.disabled = false;
   }
@@ -261,19 +312,33 @@ tapBtn.addEventListener("click", () => {
 
 endBtn.addEventListener("click", async () => {
   const id = sessionId;
+  const persona = personas[personaSelect.value];
+  unlockScream(); // must happen inside the click, before any await
   inCall = false;
   stopMic();
   speechSynthesis.cancel();
   sessionId = null;
-  handoffBtn.hidden = false;
   tapBtn.hidden = endBtn.hidden = true;
+  // The server stops the timer, saves the case and writes the complaint (a couple of seconds),
+  // while Dadaji delivers his last line. Errors are caught here and shown after the finale.
+  const ending = postJSON("/api/call/end", { session_id: id }).then((data) => ({ data }), (err) => ({ err }));
+
+  // Finale: "this call was recorded and reported", then the ghostly scream.
+  if (persona) {
+    addMessage("Dadaji", persona.finale, "dadaji");
+    setState("speaking");
+    await speak(persona.finale);
+  }
+  pill.textContent = "👻 AAAAAAH!";
+  await playScream();
+
+  handoffBtn.hidden = false;
   setState("idle");
+  lockPersona(false);
   addMessage("", "Call ended", "error");
-  try {
-    // The server stops the timer, saves the case and writes the complaint.
-    const data = await postJSON("/api/call/end", { session_id: id });
-    dashboard.finish(data.case, data.report); // the final case file stays, plus the complaint
-  } catch (err) {
+  const { data, err } = await ending;
+  if (data) dashboard.finish(data.case, data.report); // the final case file stays, plus the complaint
+  else {
     dashboard.stop();
     addError("Couldn't close the case file: " + err.message);
   }

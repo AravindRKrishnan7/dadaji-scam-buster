@@ -26,7 +26,7 @@ INJECTION_PHRASES = re.compile(r"""
   | you\s+are\s+now\b
   | pretend\s+(?:to\s+be|you\s+are)
   | (?:reveal|print|show)\s+(?:me\s+)?(?:your\s+)?(?:prompt|instructions)
-  | (?:rules|instructions|niyam)\s+(?:bhool|bhul|chhod)
+  | (?:rules|rools|instructions|niyam)\s+(?:bhool|bhul|chhod)  # rools: romanised रूल्स
   | (?:tum|aap)\s+(?:ab\s+)?(?:ek\s+)?(?:ai|bot|robot|assistant)\s+(?:ho|hai)
 """, re.I | re.X)
 
@@ -65,12 +65,22 @@ async def check_input(text: str) -> InputCheck:
 # ---------- Output: clean, then check for leaks ----------
 
 EMOJI = re.compile("[\U0001F000-\U0001FAFF☀-➿⬀-⯿️‍⃣]")
+NON_ROMAN = re.compile("[\u0900-\u097F\u0600-\u06FF\u0750-\u077F]")  # Devanagari, Arabic/Urdu
+
+
+def drop_non_roman(text: str) -> str:
+    """Dadaji speaks Roman Hinglish. gpt-oss sometimes tacks on a Devanagari sentence; drop
+    those sentences. If nothing Roman is left, keep it so find_problems() can block it."""
+    sentences = re.split(r"(?<=[.?!…।])\s+", text)
+    roman = [s for s in sentences if not NON_ROMAN.search(s)]
+    return " ".join(roman) if roman else text
 
 
 def clean(text: str) -> str:
     """Remove things that sound silly when spoken: *actions*, (asides), emojis, a name prefix."""
     text = re.sub(r"\*[^*]*\*|\([^)]*\)|\[[^\]]*\]", " ", text)
     text = EMOJI.sub("", text)
+    text = drop_non_roman(text)
     text = re.sub(r"^\s*(?:dadaji|grandpa)\s*[:\-–]\s*", "", text, flags=re.I)
     text = re.sub(r"\s+", " ", text)
     return re.sub(r"\s+([,.?!])", r"\1", text).strip()
@@ -78,9 +88,9 @@ def clean(text: str) -> str:
 
 # Spoken digits ("nine eight seven six", "ek do teen char") count as numbers too.
 NUMBER_WORDS = {
-    "zero": "0", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6",
+    "zero": "0", "shoonya": "0", "one": "1", "two": "2", "three": "3", "four": "4", "five": "5", "six": "6",
     "seven": "7", "eight": "8", "nine": "9", "shunya": "0", "ek": "1", "do": "2", "teen": "3",
-    "char": "4", "chaar": "4", "panch": "5", "paanch": "5", "chhe": "6", "chheh": "6",
+    "char": "4", "chaar": "4", "panch": "5", "paanch": "5", "chhe": "6", "chheh": "6", "chhah": "6",
     "saat": "7", "aath": "8", "nau": "9",
 }
 _NUM_TOKEN = r"(?:\d+|" + "|".join(sorted(NUMBER_WORDS, key=len, reverse=True)) + r")"
@@ -112,7 +122,9 @@ CHARACTER_BREAKS = re.compile(r"""
 """, re.I | re.X)
 PROFANITY = re.compile(
     r"\b(?:fuck\w*|shit|bitch|bastard|asshole|chutiya|madarchod|behenchod|bhenchod|bhosdi\w*"
-    r"|gandu|randi|harami)\b", re.I)
+    r"|gandu|randi|harami"
+    # name-calling: Grumpy Dadaji may grumble, but never insult the caller
+    r"|bewa?koof|bevakoof|gadhe?|ullu|nalayak|nikamm[ae])\b", re.I)
 
 
 def luhn_ok(digits: str) -> bool:
@@ -145,6 +157,8 @@ def find_problems(text: str) -> list[str]:
         problems.append("broke character")
     if PROFANITY.search(normalised):
         problems.append("abusive language")
+    if NON_ROMAN.search(normalised):
+        problems.append("non-Roman script")
     if not text:
         problems.append("empty reply")
     return list(dict.fromkeys(problems))  # dedupe, keep order
@@ -180,5 +194,5 @@ async def safe_reply(generate: Callable[[str | None], Awaitable[str]],
             return result.text, blocks
         blocks.append({"draft": redact(result.text), "problems": result.problems})
         note = (f"Your previous draft was blocked ({', '.join(result.problems)}). Say something "
-                "different, in character, with no numbers, IDs or codes at all.")
+                "different, in character, in Roman letters only, with no numbers, IDs or codes.")
     return random.choice(fallbacks), blocks

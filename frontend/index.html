@@ -22,7 +22,8 @@
     header { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
     h1 { font-size: 1.25rem; margin: 0; }
     h1 span { color: var(--accent); }
-    select { max-width: 50%; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line);
+    .pickers { display: flex; gap: 6px; min-width: 0; }
+    select { max-width: 12em; min-width: 0; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line);
              background: var(--panel); color: var(--text); font: inherit; font-size: .85rem; }
     .sub { color: var(--muted); font-size: .85rem; margin: 4px 0 12px; }
     #status { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: .85rem; color: var(--muted); }
@@ -106,7 +107,10 @@
   <main>
     <header>
       <h1>👴 Dadaji <span>Scam Buster</span></h1>
-      <select id="voice" title="Dadaji's voice"></select>
+      <div class="pickers">
+        <select id="persona" title="Which Dadaji picks up"><option value="sweet">Sweet Dadaji</option></select>
+        <select id="voice" title="Dadaji's voice"></select>
+      </div>
     </header>
     <p class="sub">Scam call? Hand the phone to Dadaji. Speak (or type) as the scammer.</p>
     <div id="status"><span id="pill">Ready</span><div id="level"><div></div></div></div>
@@ -123,7 +127,7 @@
   </main>
 
   <aside aria-label="Live case file">
-    <div class="dash-head"><h2>🕵️ Live case file</h2><span id="conn" class="conn">offline</span></div>
+    <div class="dash-head"><h2>🕵️ Live case file <span id="personaname" class="muted"></span></h2><span id="conn" class="conn">offline</span></div>
     <div class="cards">
       <section class="card wide">
         <h3>⏱ Scammer time wasted</h3>

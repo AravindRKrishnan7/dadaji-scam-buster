@@ -163,3 +163,17 @@ def test_slow_evidence_still_reaches_the_complaint(monkeypatch):
     assert f["Mobile number"] == ["+919876543210"]
     assert f["UPI ID"] == ["refund.desk@okaxis"]
     assert f["Sub-category"] == ["UPI Related Frauds"]
+
+
+def test_llm_sees_only_the_scammers_lines(monkeypatch):
+    seen = []
+
+    async def fake_chat(messages, role, **kwargs):
+        seen.append(messages[1]["content"])
+        return GOOD_NARRATIVE
+    monkeypatch.setattr(reporter, "chat", fake_chat)
+    case = sbi_case()
+    case.add_message("dadaji", "Ruko beta, chashma kahan gaya?")
+    asyncio.run(reporter.build(case))
+    assert "Caller: Main SBI head office se bol raha hoon." in seen[0]
+    assert "chashma" not in seen[0]

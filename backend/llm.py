@@ -16,12 +16,15 @@ def get_client() -> AsyncOpenAI:
     return _client
 
 
-async def chat(messages: list[dict], temperature: float = 0.8, max_tokens: int = 200) -> str:
+async def chat(messages: list[dict], temperature: float = 0.8, max_tokens: int = 1024) -> str:
     """Send a list of {role, content} messages and return the reply text."""
+    # max_tokens covers hidden reasoning too, so it is generous; the prompt keeps replies short.
+    extra = {"reasoning_effort": config.LLM_REASONING_EFFORT} if config.LLM_REASONING_EFFORT else {}
     resp = await get_client().chat.completions.create(
         model=config.LLM_MODEL,
         messages=messages,
         temperature=temperature,
         max_tokens=max_tokens,
+        **extra,
     )
     return (resp.choices[0].message.content or "").strip()

@@ -34,16 +34,27 @@ WebSocket → live dashboard (transcript, risk score, signals, evidence, timer)
   names, and the LLM adds context. Together they build a case file.
 - **Reporter**: at the end of the call, maps the case file into a complaint shaped like the
   fields on the Indian cybercrime portal (cybercrime.gov.in).
-- **Guardrail**: checks every Dadaji reply before it is spoken and blocks any real-looking
-  OTP, card or account number.
+- **Guardrail**: two checks.
+  - **Input:** scammer text goes through Groq's `meta-llama/llama-prompt-guard-2-86m`
+    (`PROMPT_GUARD_MODEL`) to detect prompt-injection attempts ("ignore your instructions",
+    "reveal your prompt"). It returns a plain probability string as the message content
+    (for example `"0.9996"` for an injection, `"0.0005"` for normal speech), so parse it with
+    `float()` and flag anything above a threshold. Flags go to the dashboard and the analyst.
+    This model exists only on Groq, so in Ollama mode skip it (or fall back to regex).
+  - **Output:** checks every Dadaji reply before it is spoken and blocks any real-looking
+    OTP, card or account number.
 
 ## Stack
 
 - FastAPI (REST + WebSocket), SQLite for case files.
 - Open-weight LLMs through the OpenAI-compatible client (`openai` package). The provider is
   switched with the `LLM_PROVIDER` environment variable:
-  - `groq` (the default): cloud, fast.
-  - `ollama`: Gemma running locally, for an offline, private mode.
+  - `groq` (the default): cloud, fast. The default model is `openai/gpt-oss-120b`
+    (Groq retired `llama-3.3-70b-versatile`).
+  - `ollama`: Gemma (`gemma3:4b`) running locally, for an offline, private mode.
+  - gpt-oss is a reasoning model, and its hidden reasoning counts toward `max_tokens`. Keep
+    `reasoning_effort="low"` (`LLM_REASONING_EFFORT`) and a generous `max_tokens`. Otherwise
+    replies get cut off mid-sentence or fall back to stock "I can't help with that" refusals.
 - Front end: one HTML/JS page in `frontend/`, served by FastAPI.
 - Deploy on Render.
 - Everything free and open source under the MIT licence. Secrets go in `.env` (git-ignored),

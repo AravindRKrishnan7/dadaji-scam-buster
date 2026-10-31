@@ -120,16 +120,10 @@
   speechSynthesis.onvoiceschanged = loadVoices;
   loadVoices();
 
-  // Strip things that sound silly read aloud: emojis, *actions*, (asides). The M2 guardrail will own this.
-  function speakable(text) {
-    return text.replace(/\*[^*]*\*/g, "").replace(/\([^)]*\)/g, "")
-      .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, "").replace(/\s+/g, " ").trim();
-  }
-
   let utterance = null; // kept in a variable: Chrome may drop onend if the utterance is garbage-collected
   function speak(text) {
     return new Promise((resolve) => {
-      const words = speakable(text);
+      const words = text.trim(); // already cleaned by the backend guardrail
       if (!words) return resolve();
       utterance = new SpeechSynthesisUtterance(words);
       const voice = voices.find((v) => v.voiceURI === voiceSelect.value);

@@ -7,7 +7,7 @@ from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
-from backend import config, stt
+from backend import config, guardrail, stt
 from backend.llm import GroqUnavailable
 from backend.dadaji import dadaji_reply
 from backend.personas import DEFAULT_PERSONA, PERSONAS
@@ -89,7 +89,11 @@ async def chat_endpoint(req: ChatRequest):
 
     session["history"].append({"role": "user", "content": req.message})
     try:
-        reply = await dadaji_reply(session["persona"], session["history"])
+        # The guardrail cleans and checks the draft, retrying once before a canned stall line.
+        reply, _blocks = await guardrail.safe_reply(
+            lambda note: dadaji_reply(session["persona"], session["history"], [note] if note else None),
+            PERSONAS[session["persona"]].fallbacks,
+        )
     except Exception as e:
         session["history"].pop()  # drop the unanswered message so a retry is clean
         log.exception("LLM call failed")

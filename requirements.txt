@@ -1,6 +1,9 @@
-fastapi>=0.115
-uvicorn>=0.30
-openai>=1.50
-python-dotenv>=1.0
-python-multipart>=0.0.9
-websockets>=12
+# Pinned to the versions the app was tested with, so a Render build matches local.
+fastapi==0.162.0
+starlette==1.10.0
+pydantic==2.14.2
+uvicorn==0.54.0
+websockets==17.4
+openai==3.42.0
+python-dotenv==1.2.4
+python-multipart==0.0.32

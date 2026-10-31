@@ -26,6 +26,13 @@ uvicorn backend.main:app --reload # http://localhost:8000
 pip install -r requirements-dev.txt && pytest
 ```
 
+## Deploy (Render, free tier)
+
+`render.yaml` is a Render Blueprint: New → Blueprint → pick this repo, then paste your
+`GROQ_API_KEY` when asked. It runs `uvicorn backend.main:app --host 0.0.0.0 --port $PORT` with
+one worker (live calls are kept in memory). The free tier sleeps after 15 minutes idle (the
+first visit then takes about a minute) and wipes saved cases on every deploy.
+
 ## Sound
 
 The scream (`frontend/scream.wav`) is generated from scratch by

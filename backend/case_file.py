@@ -23,6 +23,7 @@ class CaseFile(BaseModel):
     persona: str
     started_at: float = Field(default_factory=time.time)  # the handoff: Dadaji picked up
     ended_at: float | None = None            # set by End call; stops the time-wasted timer
+    hangup: dict | None = None               # {turn, source: phrase|analyst, detail}: scammer gave up
     turns: int = 0                           # scammer turns so far
     scam_type: str = "unknown"
     risk_score: int = 0

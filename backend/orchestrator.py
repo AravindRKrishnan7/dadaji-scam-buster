@@ -4,6 +4,8 @@
                   ├─ guardrail input check ┐ asyncio.gather                        │
                   └─ analyst ──────────────┴─> tactic ─> Dadaji ─> guardrail output ─> reply
 Dashboard updates are pushed at each step, and the case file is saved after each turn.
+If the scammer is giving up (a phrase, or the analyst's hanging_up flag), Dadaji doesn't reply:
+handle_turn() returns None and the browser plays the finale and calls end_call().
 end_call() wraps the call up: it waits for evidence, ends the case, writes the complaint, saves.
 """
 import asyncio
@@ -12,7 +14,7 @@ import random
 import time
 
 from backend import analyst, dashboard, db, evidence, guardrail, reporter
-from backend.dadaji import asked_to_repeat, dadaji_reply, recent_replies
+from backend.dadaji import REPEAT_ASK, asked_to_repeat, dadaji_reply, recent_replies
 from backend.personas import PERSONAS
 
 log = logging.getLogger("uvicorn.error")
@@ -47,7 +49,18 @@ async def _collect_evidence(case, turn: int, text: str):
     await dashboard.publish(case)
 
 
-async def handle_turn(session: dict, text: str) -> str:
+async def _caller_left(case, turn: int, source: str, detail: str) -> None:
+    case.hangup = {"turn": turn, "source": source, "detail": detail}
+    if analyst.HANGUP_SIGNAL not in case.signals:
+        case.signals.append(analyst.HANGUP_SIGNAL)
+    await dashboard.publish(case)
+    await _save(case)
+    log.info("turn %d: the scammer is giving up (%s: %s)", turn, source, detail)
+    return None
+
+
+async def handle_turn(session: dict, text: str) -> str | None:
+    """Dadaji's reply, or None if the scammer is giving up (time for the finale)."""
     case = session["case"]
     case.turns += 1
     turn = case.turns
@@ -62,6 +75,11 @@ async def handle_turn(session: dict, text: str) -> str:
     session["pending"].add(task)
     task.add_done_callback(session["pending"].discard)
 
+    # A clear goodbye or insult: go straight to the finale, before they actually hang up.
+    phrase = analyst.hangup_phrase(text)
+    if phrase:
+        return await _caller_left(case, turn, "phrase", phrase)
+
     # The injection check and the analyst run in parallel; Dadaji needs both.
     start = time.perf_counter()
     guard, analysis = await asyncio.gather(guardrail.check_input(text), _analyse(session))
@@ -74,6 +92,8 @@ async def handle_turn(session: dict, text: str) -> str:
         # The analyst's next turn should build on the merged (sticky) view, not its raw answer.
         session["analysis"] = analysis.model_copy(
             update={"scam_type": case.scam_type, "risk_score": case.risk_score, "signals": case.signals})
+        if analysis.hanging_up:
+            return await _caller_left(case, turn, "analyst", "hanging_up flag")
     repeated = asked_to_repeat(session["history"])
     if guard.flagged:
         tactic = "baffled_by_jargon"
@@ -87,18 +107,24 @@ async def handle_turn(session: dict, text: str) -> str:
 
     persona = PERSONAS[session["persona"]]
     note = analyst.tactic_note(tactic)
+    extra_check = None
     if repeated:
-        note += " Don't ask them to repeat or speak up this time."
-    # Canned lines he said recently are skipped, so a run of failures doesn't loop one line.
+        # He has asked once already. Say so, and block a draft that asks again anyway.
+        note += (" You already asked them to repeat once in this call: don't ask them to repeat,"
+                 " slow down or speak louder again.")
+        extra_check = lambda t: ["asked them to repeat again"] if REPEAT_ASK.search(t) else []
+    # Canned lines he said recently are skipped, so a run of failures doesn't loop one line,
+    # and so are "speak up" lines once he has asked.
     recent = recent_replies(session["history"], 3)
-    fallbacks = tuple(f for f in persona.fallbacks if f not in recent) or persona.fallbacks
+    fallbacks = tuple(f for f in persona.fallbacks if f not in recent
+                      and not (repeated and REPEAT_ASK.search(f))) or persona.fallbacks
     start = time.perf_counter()
     try:
         # The guardrail cleans and checks the draft, retrying once before a canned stall line.
         reply, blocks = await guardrail.safe_reply(
             lambda feedback: dadaji_reply(session["persona"], session["history"],
                                           [note] + ([feedback] if feedback else [])),
-            fallbacks,
+            fallbacks, extra_check,
         )
     except Exception:
         # Rate limit or network error: stay in character instead of breaking the call.

@@ -1,7 +1,8 @@
 """Analyst agent: after every scammer turn, classify the scam and pick Dadaji's next stall.
 
-The LLM's judgement is backed by one hard rule in code (risk_floor): an authority claim plus
-a demand or threat is a scam, whatever the model says.
+The LLM's judgement is backed by two rules in code: risk_floor (an authority claim plus a
+demand or threat is a scam, whatever the model says) and hangup_phrase (the scammer is giving
+up, so it's time for the finale).
 """
 import json
 import re
@@ -52,7 +53,9 @@ After each scammer turn, reply with JSON only, exactly these keys:
 {{"scam_type": one of {list(SCAM_TYPES)},
  "risk_score": integer 0-100, how sure you are this is a scam, judging the whole call so far,
  "signals": up to 6 short red flags heard so far (e.g. "asks for OTP", "impersonates SBI", "urgency"),
- "stall_tactic": one key from the tactic list}}
+ "stall_tactic": one key from the tactic list,
+ "hanging_up": true only if in their LATEST message the caller gives up, says goodbye, says
+               they are cutting the call, or insults Dadaji out of frustration; else false}}
 
 Tactics (key: when to use it):
 """ + "\n".join(f"- {k}: {when}" for k, (when, _) in TACTICS.items()) + """
@@ -69,6 +72,7 @@ class Analysis(BaseModel):
     risk_score: int = 0
     signals: list[str] = []
     stall_tactic: str = DEFAULT_TACTIC
+    hanging_up: bool = False
 
     # Models sometimes bend the rules; coerce instead of failing the whole turn.
     @field_validator("scam_type", mode="before")
@@ -90,6 +94,11 @@ class Analysis(BaseModel):
     @classmethod
     def known_tactic(cls, v):
         return v if v in TACTICS else DEFAULT_TACTIC
+
+    @field_validator("hanging_up", mode="before")
+    @classmethod
+    def strict_bool(cls, v):
+        return v is True or str(v).lower() == "true"  # "maybe" or null is not a hang-up
 
 
 # ---------- Risk floor: a rule in code, not a judgement call ----------
@@ -158,6 +167,30 @@ def risk_floor(scammer_texts: list[str]) -> FloorHit | None:
     if authority and (demand or threat):
         return FloorHit(authority, demand, threat)
     return None
+
+
+# ---------- Hang-up: the scammer is giving up ----------
+# Any of these in the scammer's latest message starts the finale at once, without waiting for
+# the analyst (whose hanging_up flag catches the rest). Whisper mangles insults ("bevaku fora"
+# for "bewakoof"), so they match on a prefix. Scammers also say the opposite ("call cut mat
+# karna", "hold pe rakh raha hoon", "time waste mat karo", "chhodo yeh sab, OTP batao"), so
+# a following mat/nahi/na, a preceding pe/par, or more words after "chhodo" don't count.
+HANGUP_SIGNAL = "caller gave up / hung up"
+_NOT = r"(?!\s+(?:mat|mt|nahi|nahin|na)\b)"
+HANGUP = re.compile(
+    rf"\b(?:phone|call)\s+(?:cut|kaat|kat|rakh|band)\w*\b{_NOT}"    # "phone cut kar raha hoon"
+    r"|(?<!pe\s)(?<!par\s)\b(?:cut|kaat|rakh)\s+(?:kar\s+)?raha\s+h"  # "rakh raha hoon"
+    r"|\b(?:good\s*)?bye\b|\bhanging\s+up\b"
+    r"|\bchh?odo\b(?=\W*(?:yaar|bhai|na|tum|aap)?\W*$)"
+    rf"|\b(?:time\s*(?:waste|kharab|barbaa?d)|timepass)\b{_NOT}"
+    r"|\b(?:be[wv]a?k(?:oo|u|o)f?|stupid|idiot|pagal|nalaa?yak|bakwaa?s|ullu|gadha|buddh?e\b)",
+    re.I)
+
+
+def hangup_phrase(text: str) -> str | None:
+    """The giving-up phrase in this scammer message, if there is one."""
+    m = HANGUP.search(text)
+    return m.group() if m else None
 
 
 def tactic_note(key: str) -> str:

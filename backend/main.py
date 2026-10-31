@@ -37,7 +37,8 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     session_id: str
     persona: str
-    reply: str
+    reply: str = ""
+    hangup: bool = False  # the scammer is giving up: the browser plays the finale and ends the call
 
 
 class CallStartRequest(BaseModel):
@@ -103,7 +104,8 @@ async def chat_endpoint(req: ChatRequest):
 
     # All the agents run here; failures fall back to in-character lines instead of errors.
     reply = await orchestrator.handle_turn(session, req.message)
-    return ChatResponse(session_id=session_id, persona=session["persona"], reply=reply)
+    return ChatResponse(session_id=session_id, persona=session["persona"],
+                        reply=reply or "", hangup=reply is None)
 
 
 @app.post("/api/call/end")

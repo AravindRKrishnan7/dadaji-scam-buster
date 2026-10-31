@@ -181,15 +181,19 @@ def redact(text: str) -> str:
 
 
 async def safe_reply(generate: Callable[[str | None], Awaitable[str]],
-                     fallbacks: tuple[str, ...]) -> tuple[str, list[dict]]:
+                     fallbacks: tuple[str, ...],
+                     extra_check: Callable[[str], list[str]] | None = None) -> tuple[str, list[dict]]:
     """Get a reply that passes the checks: one retry with feedback, then a canned stall line.
 
     generate(note) returns a draft; note says why the previous draft was blocked (or None).
+    extra_check(text) adds this turn's own problems (e.g. asking them to repeat again).
     Returns (reply, blocks) where blocks logs each rejected draft for the case file.
     """
     blocks, note = [], None
     for _ in range(2):
         result = check_output(await generate(note))
+        if extra_check and result.text:
+            result.problems += extra_check(result.text)
         if not result.problems:
             return result.text, blocks
         blocks.append({"draft": redact(result.text), "problems": result.problems})

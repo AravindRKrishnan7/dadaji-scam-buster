@@ -259,16 +259,24 @@ tapBtn.addEventListener("click", () => {
   else if (turn) { turn.forced = true; finishTurn(); }         // noisy room: send what we have
 });
 
-endBtn.addEventListener("click", () => {
+endBtn.addEventListener("click", async () => {
+  const id = sessionId;
   inCall = false;
   stopMic();
   speechSynthesis.cancel();
-  dashboard.stop(); // the last case file stays on screen
   sessionId = null;
   handoffBtn.hidden = false;
   tapBtn.hidden = endBtn.hidden = true;
   setState("idle");
   addMessage("", "Call ended", "error");
+  try {
+    // The server stops the timer, saves the case and writes the complaint.
+    const data = await postJSON("/api/call/end", { session_id: id });
+    dashboard.finish(data.case); // the final case file stays on screen
+  } catch (err) {
+    dashboard.stop();
+    addError("Couldn't close the case file: " + err.message);
+  }
 });
 
 $("form").addEventListener("submit", (e) => {

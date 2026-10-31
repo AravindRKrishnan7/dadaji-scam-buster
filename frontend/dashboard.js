@@ -4,6 +4,8 @@
 const dashboard = (() => {
   const $ = (id) => document.getElementById(id);
   let ws = null, watching = null, retryTimer = 0;
+  // Time-wasted timer. offset = server clock minus this browser's clock, in seconds.
+  const clock = { start: null, end: null, offset: 0, timer: 0 };
 
   const SCAM_LABELS = {
     bank_kyc: "Bank KYC", otp_fraud: "OTP fraud", upi_refund: "UPI refund",
@@ -37,7 +39,7 @@ const dashboard = (() => {
     socket.onopen = () => setConn("live");
     socket.onmessage = (e) => {
       const msg = JSON.parse(e.data);
-      if (msg.type === "case") render(msg.case);
+      if (msg.type === "case") render(msg.case, msg.now);
     };
     socket.onclose = (e) => {
       if (socket !== ws || !watching) return; // we closed it on purpose
@@ -50,6 +52,7 @@ const dashboard = (() => {
   function stop() {
     watching = null;
     clearTimeout(retryTimer);
+    clearInterval(clock.timer); // freezes the timer where it is
     const socket = ws;
     ws = null;
     socket?.close();
@@ -61,8 +64,52 @@ const dashboard = (() => {
     $("conn").className = "conn " + (state === "live" ? "live" : "");
   }
 
+  // The call is over: show the final case file (timer stopped) and refresh the running total.
+  function finish(c) {
+    stop();
+    render(c);
+    loadStats();
+  }
+
+  // ---------- Time wasted ----------
+  function fmtClock(s) {
+    const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, pad = (n) => String(n).padStart(2, "0");
+    return (h ? h + ":" + pad(m) : pad(m)) + ":" + pad(s % 60);
+  }
+  function fmtLong(s) {
+    const h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
+    return h ? `${h} h ${m} min` : m ? `${m} min ${s % 60} s` : `${s} s`;
+  }
+
+  function updateClock(c, now) {
+    // The server's clock decides; the browser only ticks between updates. Using the server
+    // time sent with each message keeps the timer right even if the phone's clock is off.
+    if (now != null) clock.offset = now - Date.now() / 1000;
+    clock.start = c.started_at;
+    clock.end = c.ended_at;
+    clearInterval(clock.timer);
+    if (clock.end == null && watching) clock.timer = setInterval(drawClock, 1000);
+    drawClock();
+  }
+
+  function drawClock() {
+    const end = clock.end ?? Date.now() / 1000 + clock.offset;
+    $("clock").textContent = fmtClock(Math.max(0, Math.floor(end - clock.start)));
+    $("clock").classList.toggle("ended", clock.end != null);
+  }
+
+  async function loadStats() {
+    try {
+      const { calls, seconds } = await (await fetch("/api/stats")).json();
+      $("totals").textContent = calls ? `Dadaji has kept scammers busy for ${fmtLong(seconds)} ` +
+        `across ${calls} call${calls === 1 ? "" : "s"}.` : "";
+    } catch { /* the total is a nice extra; never break the dashboard over it */ }
+  }
+  loadStats();
+
   // ---------- Rendering ----------
-  function render(c) {
+  function render(c, now) {
+    updateClock(c, now);
     const started = c.turns > 0;
     const color = `hsl(${120 - c.risk_score * 1.2} 70% 50%)`; // green → red
     $("risk").textContent = started ? c.risk_score : "–";
@@ -131,5 +178,5 @@ const dashboard = (() => {
       : [el("li", "muted", c.turns ? "All replies passed ✓" : "Nothing yet")]));
   }
 
-  return { watch, stop };
+  return { watch, stop, finish };
 })();

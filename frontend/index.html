@@ -83,6 +83,10 @@
     #context:not(:empty) { margin-top: 8px; }
     .turn { font-size: .7rem; color: var(--muted); font-variant-numeric: tabular-nums; }
     #timings { grid-column: 1 / -1; font-size: .72rem; color: var(--muted); }
+    .timer-row { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    #clock { font-size: 2.4rem; font-weight: 700; line-height: 1; color: var(--accent);
+             font-variant-numeric: tabular-nums; }
+    #clock.ended { color: var(--text); }
   </style>
 </head>
 <body>
@@ -109,6 +113,10 @@
   <aside aria-label="Live case file">
     <div class="dash-head"><h2>🕵️ Live case file</h2><span id="conn" class="conn">offline</span></div>
     <div class="cards">
+      <section class="card wide">
+        <h3>⏱ Scammer time wasted</h3>
+        <div class="timer-row"><span id="clock">00:00</span><span id="totals" class="muted"></span></div>
+      </section>
       <section class="card">
         <h3>Scam risk <span id="turns"></span></h3>
         <div class="risk-row"><span id="risk">–</span>

@@ -60,6 +60,26 @@ WebSocket → live dashboard (transcript, risk score, signals, evidence, timer)
 - Everything free and open source under the MIT licence. Secrets go in `.env` (git-ignored),
   and `.env.example` documents them.
 
+## Voice (milestone 3)
+
+- Flow in `frontend/index.html`: the handoff button → `POST /api/call/start` (the persona's
+  fixed `greeting`, stored as the first assistant message) → speak → listen →
+  `POST /api/transcribe` → `POST /api/chat` → speak → listen…
+- STT is `whisper-large-v3-turbo` (`STT_MODEL`) and **always uses Groq**, even when
+  `LLM_PROVIDER=ollama`, because Ollama has no Whisper. With no key, it returns a 503 and the UI
+  falls back to typing.
+- Whisper invents "Thank you." for silence. Groq's `no_speech_prob` is always 0, so `stt.py`
+  drops known filler phrases instead, and the browser only uploads clips with ≥0.5 s of speech.
+- Hands-free turn-taking: a volume (RMS) threshold that adapts to background noise, and 1.2 s
+  of silence ends a turn. Recording stops while Dadaji speaks, so he doesn't hear himself.
+  "Done speaking" forces a turn to end in noisy rooms, and "Interrupt Dadaji" cuts him off.
+- TTS: `speechSynthesis`, preferring `hi-IN`, then `en-IN`, voices. Rate 0.9 and pitch 0.8.
+  There's a voice dropdown, because most Hindi voices are female.
+- gpt-oss sometimes glues several Dadaji turns into one reply. `trim_reply()` keeps the first
+  turn and at most 3 sentences.
+- Headless Chrome's `--use-file-for-fake-audio-capture` gives silence on macOS. For automated
+  tests, override `getUserMedia` with a Web Audio stream that plays a WAV instead.
+
 ## Layout
 
 ```
@@ -67,7 +87,8 @@ backend/
   config.py     env vars and LLM provider selection
   llm.py        shared OpenAI-compatible client + chat() helper
   personas.py   Dadaji persona configs
-  dadaji.py     Dadaji agent (builds the prompt, calls the LLM)
+  dadaji.py     Dadaji agent (builds the prompt, calls the LLM, trims replies)
+  stt.py        Groq Whisper speech-to-text
   main.py       FastAPI app: routes, sessions, serves the front end
 frontend/
   index.html    single-page UI
@@ -86,7 +107,8 @@ uvicorn backend.main:app --reload # run from the repo root → http://localhost:
 
 1. [x] Text chat with Sweet Dadaji
 2. [ ] Analyst, evidence and guardrail agents + live dashboard over WebSocket
-3. [ ] Voice (Whisper STT + browser TTS) and the "talk to my grandfather" handoff button
+3. [x] Voice (Whisper STT + browser TTS) and the "talk to my grandfather" handoff button
+   (built before M2 by choice; M2 slots in between `/api/transcribe` and the TTS step)
 4. [ ] Reporter + time-wasted timer
 5. [ ] Grumpy/Confused personas with a picker, the scream finale, deploy to Render
 6. [ ] Stretch goal: eval script that runs 10 scripted scam calls and reports classification

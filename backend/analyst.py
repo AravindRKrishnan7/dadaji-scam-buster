@@ -35,6 +35,9 @@ TACTICS = {
                           "Treat their strange words as gibberish. Ask if it's a new medicine or a TV serial."),
 }
 DEFAULT_TACTIC = "hard_of_hearing"
+# Used in turn when the analyst fails or its pick isn't allowed, so stalls don't repeat.
+ROTATION = ("misunderstand", "chai_break", "railway_story", "call_bunty_first",
+            "lost_glasses", "hard_of_hearing")
 HISTORY_TURNS = 6  # the analyst sees recent messages only, to save tokens
 
 SYSTEM = f"""You are a fraud analyst silently listening to a phone call between a suspected
@@ -87,6 +90,16 @@ def tactic_note(key: str) -> str:
     return "Stalling tactic: " + TACTICS[key][1]
 
 
+def pick_tactic(proposed: str | None, recent: list[str], asked_to_repeat: bool) -> str:
+    """The analyst's pick (None if it failed), unless it was used in the last 2 turns or it's
+    hard_of_hearing right after Dadaji already asked them to repeat. Otherwise rotate."""
+    banned = set(recent[-2:]) | ({"hard_of_hearing"} if asked_to_repeat else set())
+    if proposed and proposed not in banned:
+        return proposed
+    start = len(recent) % len(ROTATION)
+    return next(k for k in ROTATION[start:] + ROTATION[:start] if k not in banned)
+
+
 async def run(history: list[dict], previous: Analysis | None, recent_tactics: list[str]) -> Analysis:
     """history uses OpenAI roles: "user" = scammer, "assistant" = Dadaji."""
     transcript = "\n".join(
@@ -101,8 +114,4 @@ async def run(history: list[dict], previous: Analysis | None, recent_tactics: li
         [{"role": "system", "content": SYSTEM}, {"role": "user", "content": prompt}],
         role="analyst", temperature=0, max_tokens=800, response_format={"type": "json_object"},
     )
-    analysis = Analysis.model_validate(json.loads(raw))
-    if analysis.stall_tactic in recent:  # enforce the no-repeat rule if the model ignored it
-        analysis.stall_tactic = next(k for k in ("misunderstand", "chai_break", DEFAULT_TACTIC)
-                                     if k not in recent)
-    return analysis
+    return Analysis.model_validate(json.loads(raw))  # pick_tactic() enforces the no-repeat rule

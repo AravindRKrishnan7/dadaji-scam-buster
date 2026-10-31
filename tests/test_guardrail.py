@@ -75,3 +75,25 @@ def test_safe_reply_retries_then_falls_back():
     assert reply == "Hello? Awaaz kat rahi hai."
     assert len(blocks) == 2 and "•" in blocks[0]["draft"]
     assert notes[0] is None and "blocked" in notes[1]
+
+
+@pytest.mark.parametrize("reply", [
+    "Card number hai 4... 4... arre, chashma kahan gaya!",
+    "OTP? Haan aaya hai, 7... 3... ruko, Sunita bula rahi hai.",
+])
+def test_up_to_three_fake_digits_pass(reply):
+    assert check_output(reply).problems == []
+
+
+def test_four_spaced_digits_near_otp_still_blocked():
+    assert "4-digit code near OTP/PIN" in check_output("OTP hai 7... 3... 9... 1.").problems
+
+
+def test_devanagari_sentence_is_dropped():
+    assert clean("Ruko beta, chashma dhoond raha hoon. बस, थोड़ा इंतज़ार करो।") == \
+        "Ruko beta, chashma dhoond raha hoon."
+
+
+def test_all_non_roman_reply_is_blocked():
+    assert "non-Roman script" in check_output("बस, थोड़ा इंतज़ार करो।").problems
+    assert "non-Roman script" in check_output("ذرا انتظار کرو").problems

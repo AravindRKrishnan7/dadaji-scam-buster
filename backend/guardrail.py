@@ -65,12 +65,22 @@ async def check_input(text: str) -> InputCheck:
 # ---------- Output: clean, then check for leaks ----------
 
 EMOJI = re.compile("[\U0001F000-\U0001FAFF☀-➿⬀-⯿️‍⃣]")
+NON_ROMAN = re.compile("[\u0900-\u097F\u0600-\u06FF\u0750-\u077F]")  # Devanagari, Arabic/Urdu
+
+
+def drop_non_roman(text: str) -> str:
+    """Dadaji speaks Roman Hinglish. gpt-oss sometimes tacks on a Devanagari sentence; drop
+    those sentences. If nothing Roman is left, keep it so find_problems() can block it."""
+    sentences = re.split(r"(?<=[.?!…।])\s+", text)
+    roman = [s for s in sentences if not NON_ROMAN.search(s)]
+    return " ".join(roman) if roman else text
 
 
 def clean(text: str) -> str:
     """Remove things that sound silly when spoken: *actions*, (asides), emojis, a name prefix."""
     text = re.sub(r"\*[^*]*\*|\([^)]*\)|\[[^\]]*\]", " ", text)
     text = EMOJI.sub("", text)
+    text = drop_non_roman(text)
     text = re.sub(r"^\s*(?:dadaji|grandpa)\s*[:\-–]\s*", "", text, flags=re.I)
     text = re.sub(r"\s+", " ", text)
     return re.sub(r"\s+([,.?!])", r"\1", text).strip()
@@ -145,6 +155,8 @@ def find_problems(text: str) -> list[str]:
         problems.append("broke character")
     if PROFANITY.search(normalised):
         problems.append("abusive language")
+    if NON_ROMAN.search(normalised):
+        problems.append("non-Roman script")
     if not text:
         problems.append("empty reply")
     return list(dict.fromkeys(problems))  # dedupe, keep order
@@ -180,5 +192,5 @@ async def safe_reply(generate: Callable[[str | None], Awaitable[str]],
             return result.text, blocks
         blocks.append({"draft": redact(result.text), "problems": result.problems})
         note = (f"Your previous draft was blocked ({', '.join(result.problems)}). Say something "
-                "different, in character, with no numbers, IDs or codes at all.")
+                "different, in character, in Roman letters only, with no numbers, IDs or codes.")
     return random.choice(fallbacks), blocks

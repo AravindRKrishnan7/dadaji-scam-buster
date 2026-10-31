@@ -45,13 +45,18 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
     note says "in your own personality".
   - **Variety, in code:**
     - `dadaji.variety_note()` shows him how his last 3 replies began.
-    - `asked_to_repeat()` (the `REPEAT_ASK` regex over his last 2 replies) bans the
-      `hard_of_hearing` tactic and adds "don't ask them to repeat".
+    - Asking the caller to repeat / slow down / speak up is allowed **once per call** (a real
+      call had "dheere se, thoda zor se boliye" twice, 3 replies apart). `asked_to_repeat()`
+      runs the `REPEAT_ASK` regex over **all** his replies. Once he has asked, `hard_of_hearing`
+      is banned, the note says not to ask again, `safe_reply(extra_check=...)` blocks a draft
+      that asks anyway (one retry, then a fallback), and fallbacks that ask are skipped.
+      `REPEAT_ASK` needs a "again/slowly/louder" word shortly before a speaking verb (bolo,
+      boliye, batao…), so "dheere dheere chalta hoon" doesn't count.
     - `analyst.pick_tactic()` enforces both bans and rotates through `ROTATION` when the
       analyst fails or its pick is banned.
     - Fallback lines he said recently aren't reused.
 - **Analyst** (`analyst.py`): JSON mode, reading the last 6 messages + the previous analysis →
-  `{scam_type, risk_score, signals[], stall_tactic}`, validated by pydantic (unknown values are
+  `{scam_type, risk_score, signals[], stall_tactic, hanging_up}`, validated by pydantic (unknown values are
   coerced, not rejected). Tactics come from the `TACTICS` catalogue (key → when to use it, plus
   Dadaji's instruction), with no repeats from the last 2 turns. Dadaji gets the tactic as a
   one-off system note after the history. Risk is calibrated to stay under 30 until money, codes,
@@ -69,6 +74,19 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
     - "fine" only counts next to an amount or lagega/bharna ("main fine hoon" is not a
       threat), and FIR only in capitals ("fir se" is Hinglish for "again").
     - `tests/test_risk_floor.py` covers the SBI claim → account request → ₹10 lakh fine call.
+- **Auto-finale** (hang-up detection): when the scammer gives up, Dadaji doesn't reply and
+  the finale plays by itself. `handle_turn()` returns `None`, `/api/chat` returns
+  `{"reply": "", "hangup": true}`, and `call.js` runs the same `endCall()` as the End call
+  button (which stays as a backup). `case.hangup = {turn, source, detail}` and the signal
+  "caller gave up / hung up" is added.
+  - `analyst.HANGUP` (phrase list, checked **before** the analyst so the finale starts before
+    they hang up): phone cut/rakh/band, bye, chhodo at the end of a sentence, time waste,
+    insults (bewakoof by prefix, since Whisper wrote "bevaku fora", stupid, pagal, buddhe…).
+    Not when followed by mat/nahi/na ("call cut mat karna", "time waste mat karo") or after
+    pe/par ("hold pe rakh raha hoon").
+  - Otherwise the analyst's `hanging_up` flag (only a real `true` counts).
+  - `tests/test_hangup.py` has the real lines "Aray yaar, bevaku fora, main phone cut kar raha
+    hoon" and "TK, bye bye, you are stupid, bye".
 - **Evidence** (`evidence.py`): tool calling on the latest scammer message only. Finder tools
   take no arguments (they scan that message): `find_phone_numbers`, `find_upi_ids`, `find_links`,
   `find_bank_names`. There's also `record_context` for the claimed identity, amount and payment
@@ -184,8 +202,9 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
 - Hands-free turn-taking: a volume (RMS) threshold that adapts to background noise, and 1.2 s
   of silence ends a turn. Recording stops while Dadaji speaks, so he doesn't hear himself.
   "Done speaking" forces a turn to end in noisy rooms, and "Interrupt Dadaji" cuts him off.
-- TTS: `speechSynthesis`, preferring `hi-IN`, then `en-IN`, voices. Rate 0.9 and pitch 0.8.
-  There's a voice dropdown, because most Hindi voices are female.
+- TTS: `speechSynthesis`, `hi-IN` and `en-IN` voices. Rate 0.9 and pitch 0.8. **Rishi**
+  (en-IN, Apple) is the default when available, unless the user picked another voice in the
+  dropdown, because most Hindi voices are female.
 - gpt-oss sometimes glues several Dadaji turns into one reply. `trim_reply()` keeps the first
   turn and at most 3 sentences.
 - Anything the scammer says while Dadaji is speaking isn't recorded (that's the echo protection).
@@ -218,7 +237,7 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
 
 ## Personas, finale, typed calls (milestone 5)
 
-- **Finale** (End call in `call.js`):
+- **Finale** (`endCall()` in `call.js`, from End call or the auto-finale):
   1. `POST /api/call/end` starts immediately, while Dadaji talks.
   2. The browser shows and speaks the persona's `finale` ("call record ho gayi… report bhi
      ho gayi… Ab suno…").
@@ -226,10 +245,13 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
   4. The complaint card appears.
   `end_call()` adds the finale as the last transcript line.
 - Safari only allows audio that was started inside a click, so `unlockScream()` plays it
-  muted for a moment on the End click.
+  muted for a moment on the handoff click, each typed send and the End click (the
+  auto-finale has no click of its own).
 - The scream comes from `scripts/make_scream.py`: stdlib only, a fixed seed, so it's
-  reproducible. It has a harmonic wail with vibrato through two formant filters, a whistle,
-  quiet breath noise and feedback echoes. The README credits it.
+  reproducible. A jump scare: 0.7 s of silence, then a 5 ms attack into a ~3.4 kHz shriek
+  (two detuned buzzy voices, "eee" formants at 3 and 6 kHz, a 70 Hz roughness flutter, hiss)
+  sliding to ~1.9 kHz, tanh soft clipping for loudness (about -7 dBFS RMS, 7 dB above the old
+  one), two short echoes. 44.1 kHz, 2.9 s. The README credits it.
 - **Typed sessions:** End call appears after the first typed reply, and the handoff button
   hides until then. So typed calls also get the finale and the complaint.
 - **Persona picker:** `#persona` is filled from `GET /api/personas` (which includes `finale`)

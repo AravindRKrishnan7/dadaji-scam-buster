@@ -1,9 +1,9 @@
 # Dadaji Scam Buster
 
 Got a scam call? Tap **"Talk to my grandfather"** and an AI Dadaji takes over the call, wastes
-the scammer's time and builds a complaint for cybercrime.gov.in while he does it. When you hang
-up, Dadaji tells the scammer the call was recorded and reported, then lets out a ghostly
-Halloween scream.
+the scammer's time and builds a complaint for cybercrime.gov.in while he does it. When the
+scammer gives up ("phone cut kar raha hoon", "bye bye") or you press End call, Dadaji tells
+them the call was recorded and reported, then lets out a ghostly Halloween scream.
 
 ## Personas
 

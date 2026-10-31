@@ -7,8 +7,17 @@ from backend.personas import PERSONAS
 # Only the most recent messages are sent, to keep prompts small and fast.
 MAX_HISTORY = 20
 MAX_SENTENCES = 3
-# Asking the caller to repeat / speak up. Fine once, tiresome twice in a row.
-REPEAT_ASK = re.compile(r"\b(?:phir\s*se|fir\s*se|dobara|repeat|dhee?re|zor\s+se|sunai|awaaz)\b", re.I)
+# Asking the caller to repeat, slow down or speak up. Fine once a call; a real caller noticed
+# it twice ("dheere se, thoda zor se boliye"), so after the first ask it's banned for the rest
+# of the call and a draft that does it anyway is blocked. A "say it again / slower / louder"
+# word must come shortly before a speaking verb, so "dheere dheere chalta hoon" doesn't count.
+_SAY = r"(?:bol(?:o|iye|ie|na|ein|e)|bata(?:o|iye|na)?|kaho|kahiye|samjhao|samjhaiye)\b"
+REPEAT_ASK = re.compile(
+    rf"\b(?:phir|fir|dobara|ek\s+baar\s+(?:aur|phir|fir)|dhee?re|dhire|aaram|zor|jor|oonch\w*|saaf)\b"
+    rf"[^.?!]{{0,25}}?\b{_SAY}"
+    r"|\b(?:repeat|louder|slowly|speak\s+up|say\s+(?:that|it)\s+again|sunai\s+nahi|suna\s+nahi"
+    r"|kya\s+(?:kaha|bola|bole)\b|awaaz\s+(?:kat|nahi\s+aa|saaf\s+nahi|dhimi|kam|toot))",
+    re.I)
 
 
 def recent_replies(history: list[dict], n: int) -> list[str]:
@@ -16,8 +25,8 @@ def recent_replies(history: list[dict], n: int) -> list[str]:
 
 
 def asked_to_repeat(history: list[dict]) -> bool:
-    """Did either of Dadaji's last 2 replies ask the caller to repeat or speak up?"""
-    return any(REPEAT_ASK.search(r) for r in recent_replies(history, 2))
+    """Has Dadaji already asked the caller to repeat or speak up in this call?"""
+    return any(REPEAT_ASK.search(m["content"]) for m in history if m["role"] == "assistant")
 
 
 def variety_note(history: list[dict]) -> str | None:

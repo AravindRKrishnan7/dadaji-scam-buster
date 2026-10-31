@@ -61,6 +61,8 @@ const lockPersona = (locked) => { personaSelect.disabled = locked; };
 
 // ---------- Text-to-speech ----------
 let voices = [];
+let voicePicked = false; // the user chose a voice themselves: keep it
+voiceSelect.addEventListener("change", () => { voicePicked = true; });
 function loadVoices() {
   // Indian voices only, Hindi first. Voices load asynchronously, so this runs again on voiceschanged.
   voices = speechSynthesis.getVoices().filter((v) => /^(hi|en)[-_]IN/i.test(v.lang))
@@ -68,7 +70,11 @@ function loadVoices() {
   const current = voiceSelect.value;
   voiceSelect.replaceChildren(...voices.map((v) => new Option(`${v.name} (${v.lang})`, v.voiceURI)));
   if (!voices.length) voiceSelect.append(new Option("Default voice", ""));
-  if (voices.some((v) => v.voiceURI === current)) voiceSelect.value = current;
+  // Rishi (en-IN, Apple devices) is the default: most Hindi voices are female.
+  const rishi = voices.find((v) => /rishi/i.test(v.name) && /^en[-_]IN/i.test(v.lang));
+  if (voicePicked && voices.some((v) => v.voiceURI === current)) voiceSelect.value = current;
+  else if (rishi) voiceSelect.value = rishi.voiceURI;
+  else if (voices.some((v) => v.voiceURI === current)) voiceSelect.value = current;
 }
 speechSynthesis.onvoiceschanged = loadVoices;
 loadVoices();
@@ -96,9 +102,11 @@ function speak(text) {
 const scream = new Audio("/static/scream.wav");
 scream.preload = "auto";
 
-// Safari only lets audio play later if it was started during a click. So on the End click,
-// play it silently for a moment; the real play after Dadaji's last line is then allowed.
+// Safari only lets audio play later if it was started during a click. So on every click that
+// starts or ends a call (and each typed send), play it silently for a moment; the real play
+// after Dadaji's last line is then allowed, even when the finale starts by itself.
 function unlockScream() {
+  if (!scream.paused) return;
   scream.muted = true;
   scream.play().then(() => { scream.pause(); scream.currentTime = 0; scream.muted = false; })
     .catch(() => { scream.muted = false; });
@@ -109,6 +117,7 @@ function playScream() {
     const timer = setTimeout(resolve, 6000); // safety net, like speak()
     scream.onended = scream.onerror = () => { clearTimeout(timer); resolve(); };
     scream.muted = false;
+    scream.volume = 1; // full volume: it has to be louder than Dadaji
     scream.currentTime = 0;
     scream.play().catch(() => { clearTimeout(timer); resolve(); });
   });
@@ -241,6 +250,7 @@ function stopMic() {
 async function scammerSays(text) {
   if (busy) return;
   busy = true;
+  let hungUp = false;
   send.disabled = true;
   discardTurn(); // if they typed while the mic was listening
   addMessage("Scammer", text, "me");
@@ -256,6 +266,12 @@ async function scammerSays(text) {
       endBtn.hidden = false;
       handoffBtn.hidden = true;
     }
+    if (data.hangup) {
+      // The scammer is giving up: Dadaji gets the last word before they can hang up.
+      hungUp = true;
+      addMessage("", "Scammer is giving up…", "error");
+      return;
+    }
     addMessage("Dadaji", data.reply, "dadaji");
     if (inCall) {
       setState("speaking");
@@ -268,6 +284,7 @@ async function scammerSays(text) {
     busy = false;
     send.disabled = false;
   }
+  if (hungUp) return endCall();
   if (inCall) stream ? startListening() : setState("typing");
   else setState("idle");
 }
@@ -276,6 +293,7 @@ async function scammerSays(text) {
 handoffBtn.addEventListener("click", async () => {
   // Browsers only allow audio after a click, so "unlock" speech right here, before any await.
   speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+  unlockScream();
   handoffBtn.disabled = true;
   try {
     await initMic();
@@ -310,10 +328,11 @@ tapBtn.addEventListener("click", () => {
   else if (turn) { turn.forced = true; finishTurn(); }         // noisy room: send what we have
 });
 
-endBtn.addEventListener("click", async () => {
+// The finale. Runs on End call (the backup) or by itself when the scammer gives up.
+async function endCall() {
   const id = sessionId;
+  if (!id) return; // already ending
   const persona = personas[personaSelect.value];
-  unlockScream(); // must happen inside the click, before any await
   inCall = false;
   stopMic();
   speechSynthesis.cancel();
@@ -342,12 +361,18 @@ endBtn.addEventListener("click", async () => {
     dashboard.stop();
     addError("Couldn't close the case file: " + err.message);
   }
+}
+
+endBtn.addEventListener("click", () => {
+  unlockScream(); // must happen inside the click, before any await
+  endCall();
 });
 
 $("form").addEventListener("submit", (e) => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text || busy) return;
+  unlockScream(); // typed calls can end by themselves too
   input.value = "";
   scammerSays(text).then(() => input.focus());
 });

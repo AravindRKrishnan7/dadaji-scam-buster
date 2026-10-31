@@ -250,6 +250,12 @@ async function scammerSays(text) {
     const data = await postJSON("/api/chat", { message: text, session_id: sessionId, persona: personaSelect.value });
     sessionId = data.session_id;
     dashboard.watch(sessionId); // no-op if already watching this call
+    if (!inCall) {
+      // A typed-only session is a call too: it can be ended (finale + complaint).
+      // The handoff button hides until then, so the typed case isn't left open.
+      endBtn.hidden = false;
+      handoffBtn.hidden = true;
+    }
     addMessage("Dadaji", data.reply, "dadaji");
     if (inCall) {
       setState("speaking");

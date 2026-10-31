@@ -33,9 +33,10 @@ function addMessage(who, text, cls) {
 }
 const addError = (text) => addMessage("", "⚠ " + text, "error");
 
-async function postJSON(url, body) {
+async function postJSON(url, body, timeoutMs = 0) {
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
-                                 body: JSON.stringify(body) });
+                                 body: JSON.stringify(body),
+                                 signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined });
   const data = await res.json();
   if (!res.ok) throw new Error(data.detail || res.statusText);
   return data;
@@ -90,12 +91,33 @@ function speak(text) {
     utterance.lang = voice ? voice.lang : "hi-IN";
     utterance.rate = 0.9;  // a little slower...
     utterance.pitch = 0.8; // ...and lower, to sound older
-    // Safety net in case onend never fires, so the call can't get stuck.
-    const timer = setTimeout(resolve, words.length * 120 + 3000);
-    utterance.onend = utterance.onerror = () => { clearTimeout(timer); resolve(); };
+    // Safety nets, so the call can't get stuck: speech that never starts (blocked, no voices)
+    // is skipped after SPEECH_START_MS, and speech that never ends is cut off.
+    let started = false;
+    const done = (why) => {
+      clearTimeout(startTimer); clearTimeout(endTimer);
+      if (why !== "end") console.warn("[speech]", why);
+      resolve();
+    };
+    const startTimer = setTimeout(() => { if (!started) { speechSynthesis.cancel(); done("never started, skipping"); } },
+                                  SPEECH_START_MS);
+    const endTimer = setTimeout(() => { speechSynthesis.cancel(); done("timed out"); },
+                                Math.min(words.length * 100 + 3000, SPEECH_MAX_MS));
+    utterance.onstart = () => { started = true; };
+    utterance.onend = () => done("end");
+    utterance.onerror = (e) => done("error: " + e.error);
     speechSynthesis.cancel();
     speechSynthesis.speak(utterance);
   });
+}
+const SPEECH_START_MS = 2500, SPEECH_MAX_MS = 20000;
+
+// Browsers only allow sound after a click. Call this inside every click that may lead to
+// sound later (the handoff, each Send, End call): an empty utterance unlocks speech, and the
+// muted scream unlocks the audio element (Safari).
+function unlockAudio() {
+  if (!speechSynthesis.speaking) speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+  unlockScream();
 }
 
 // ---------- The finale scream ----------
@@ -114,12 +136,23 @@ function unlockScream() {
 
 function playScream() {
   return new Promise((resolve) => {
-    const timer = setTimeout(resolve, 6000); // safety net, like speak()
-    scream.onended = scream.onerror = () => { clearTimeout(timer); resolve(); };
+    // Safety nets, like speak(): skip it if it hasn't started in 1.5 s, stop it after 5 s.
+    let started = false;
+    const done = (why) => {
+      clearTimeout(startTimer); clearTimeout(endTimer);
+      scream.onplaying = scream.onended = scream.onerror = null;
+      if (why !== "end") { console.warn("[scream]", why); scream.pause(); }
+      resolve();
+    };
+    const startTimer = setTimeout(() => { if (!started) done("never started, skipping"); }, 1500);
+    const endTimer = setTimeout(() => done("timed out"), 5000);
+    scream.onplaying = () => { started = true; };
+    scream.onended = () => done("end");
+    scream.onerror = () => done("error loading audio");
     scream.muted = false;
     scream.volume = 1; // full volume: it has to be louder than Dadaji
     scream.currentTime = 0;
-    scream.play().catch(() => { clearTimeout(timer); resolve(); });
+    scream.play().catch((err) => done("blocked: " + err.name));
   });
 }
 
@@ -268,12 +301,14 @@ async function scammerSays(text) {
     }
     if (data.hangup) {
       // The scammer is giving up: Dadaji gets the last word before they can hang up.
+      // (No `return` here: it would skip the endCall() below the try block.)
       hungUp = true;
+      console.log("[finale] scammer is giving up, starting the finale");
       addMessage("", "Scammer is giving up…", "error");
-      return;
+    } else {
+      addMessage("Dadaji", data.reply, "dadaji");
     }
-    addMessage("Dadaji", data.reply, "dadaji");
-    if (inCall) {
+    if (inCall && !hungUp) {
       setState("speaking");
       await speak(data.reply);
     }
@@ -291,9 +326,7 @@ async function scammerSays(text) {
 
 // ---------- Call controls ----------
 handoffBtn.addEventListener("click", async () => {
-  // Browsers only allow audio after a click, so "unlock" speech right here, before any await.
-  speechSynthesis.speak(new SpeechSynthesisUtterance(""));
-  unlockScream();
+  unlockAudio(); // inside the click, before any await
   handoffBtn.disabled = true;
   try {
     await initMic();
@@ -329,10 +362,13 @@ tapBtn.addEventListener("click", () => {
 });
 
 // The finale. Runs on End call (the backup) or by itself when the scammer gives up.
+// Every step has a timeout (speak, playScream, the server call), so it always reaches the end.
+const END_TIMEOUT_MS = 30000; // the server writes the complaint with an LLM; usually 2-5 s
 async function endCall() {
   const id = sessionId;
   if (!id) return; // already ending
   const persona = personas[personaSelect.value];
+  console.log("[finale] 1/5 ending call", id);
   inCall = false;
   stopMic();
   speechSynthesis.cancel();
@@ -340,31 +376,42 @@ async function endCall() {
   tapBtn.hidden = endBtn.hidden = true;
   // The server stops the timer, saves the case and writes the complaint (a couple of seconds),
   // while Dadaji delivers his last line. Errors are caught here and shown after the finale.
-  const ending = postJSON("/api/call/end", { session_id: id }).then((data) => ({ data }), (err) => ({ err }));
+  const ending = postJSON("/api/call/end", { session_id: id }, END_TIMEOUT_MS)
+    .then((data) => ({ data }), (err) => ({ err }));
 
-  // Finale: "this call was recorded and reported", then the ghostly scream.
-  if (persona) {
-    addMessage("Dadaji", persona.finale, "dadaji");
-    setState("speaking");
-    await speak(persona.finale);
+  try {
+    // Finale: "this call was recorded and reported", then the ghostly scream.
+    if (persona) {
+      console.log("[finale] 2/5 Dadaji's last line");
+      addMessage("Dadaji", persona.finale, "dadaji");
+      setState("speaking");
+      await speak(persona.finale);
+    }
+    console.log("[finale] 3/5 scream");
+    pill.textContent = "👻 AAAAAAH!";
+    await playScream();
+  } catch (err) {
+    console.error("[finale] sound failed, skipping ahead", err);
   }
-  pill.textContent = "👻 AAAAAAH!";
-  await playScream();
 
   handoffBtn.hidden = false;
   setState("idle");
   lockPersona(false);
   addMessage("", "Call ended", "error");
+  console.log("[finale] 4/5 waiting for the complaint");
   const { data, err } = await ending;
-  if (data) dashboard.finish(data.case, data.report); // the final case file stays, plus the complaint
-  else {
+  if (data) {
+    dashboard.finish(data.case, data.report); // the final case file stays, plus the complaint
+    console.log("[finale] 5/5 complaint shown");
+  } else {
     dashboard.stop();
     addError("Couldn't close the case file: " + err.message);
+    console.error("[finale] 5/5 no complaint:", err);
   }
 }
 
 endBtn.addEventListener("click", () => {
-  unlockScream(); // must happen inside the click, before any await
+  unlockAudio(); // must happen inside the click, before any await
   endCall();
 });
 
@@ -372,7 +419,7 @@ $("form").addEventListener("submit", (e) => {
   e.preventDefault();
   const text = input.value.trim();
   if (!text || busy) return;
-  unlockScream(); // typed calls can end by themselves too
+  unlockAudio(); // typed calls can end by themselves too (the auto-finale has no click)
   input.value = "";
   scammerSays(text).then(() => input.focus());
 });

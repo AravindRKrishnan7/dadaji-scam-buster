@@ -124,6 +124,8 @@ async def _save(case, report: dict | None = None):
 async def end_call(session: dict):
     case = session["case"]
     case.ended_at = time.time()  # first, so the timer stops at the moment End call was pressed
+    # The browser speaks the finale itself (no waiting); it's recorded here for the transcript.
+    case.add_message("dadaji", PERSONAS[session["persona"]].finale)
     if session["pending"]:
         _, late = await asyncio.wait(session["pending"], timeout=EVIDENCE_WAIT)
         if late:

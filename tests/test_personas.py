@@ -32,3 +32,16 @@ def test_shared_rules_in_every_prompt(key):
 ])
 def test_name_calling_is_blocked(reply):
     assert "abusive language" in check_output(reply).problems
+
+
+def test_finale_is_the_last_line_of_the_transcript():
+    from fastapi.testclient import TestClient
+
+    from backend.main import app
+    client = TestClient(app)
+    sid = client.post("/api/call/start", json={"persona": "confused"}).json()["session_id"]
+    case = client.post("/api/call/end", json={"session_id": sid}).json()["case"]
+    assert case["transcript"][-1] == {**case["transcript"][-1], "role": "dadaji",
+                                      "text": PERSONAS["confused"].finale}
+    personas = {p["key"]: p for p in client.get("/api/personas").json()}
+    assert personas["grumpy"]["finale"] == PERSONAS["grumpy"].finale

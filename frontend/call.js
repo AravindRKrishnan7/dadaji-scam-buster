@@ -92,6 +92,28 @@ function speak(text) {
   });
 }
 
+// ---------- The finale scream ----------
+const scream = new Audio("/static/scream.wav");
+scream.preload = "auto";
+
+// Safari only lets audio play later if it was started during a click. So on the End click,
+// play it silently for a moment; the real play after Dadaji's last line is then allowed.
+function unlockScream() {
+  scream.muted = true;
+  scream.play().then(() => { scream.pause(); scream.currentTime = 0; scream.muted = false; })
+    .catch(() => { scream.muted = false; });
+}
+
+function playScream() {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, 6000); // safety net, like speak()
+    scream.onended = scream.onerror = () => { clearTimeout(timer); resolve(); };
+    scream.muted = false;
+    scream.currentTime = 0;
+    scream.play().catch(() => { clearTimeout(timer); resolve(); });
+  });
+}
+
 // ---------- Microphone + hands-free turn-taking ----------
 // While listening, the recorder runs from the start (so the first word isn't clipped) and
 // a volume meter decides when the scammer has started and then stopped talking.
@@ -284,20 +306,33 @@ tapBtn.addEventListener("click", () => {
 
 endBtn.addEventListener("click", async () => {
   const id = sessionId;
+  const persona = personas[personaSelect.value];
+  unlockScream(); // must happen inside the click, before any await
   inCall = false;
   stopMic();
   speechSynthesis.cancel();
   sessionId = null;
-  handoffBtn.hidden = false;
   tapBtn.hidden = endBtn.hidden = true;
+  // The server stops the timer, saves the case and writes the complaint (a couple of seconds),
+  // while Dadaji delivers his last line. Errors are caught here and shown after the finale.
+  const ending = postJSON("/api/call/end", { session_id: id }).then((data) => ({ data }), (err) => ({ err }));
+
+  // Finale: "this call was recorded and reported", then the ghostly scream.
+  if (persona) {
+    addMessage("Dadaji", persona.finale, "dadaji");
+    setState("speaking");
+    await speak(persona.finale);
+  }
+  pill.textContent = "👻 AAAAAAH!";
+  await playScream();
+
+  handoffBtn.hidden = false;
   setState("idle");
   lockPersona(false);
   addMessage("", "Call ended", "error");
-  try {
-    // The server stops the timer, saves the case and writes the complaint.
-    const data = await postJSON("/api/call/end", { session_id: id });
-    dashboard.finish(data.case, data.report); // the final case file stays, plus the complaint
-  } catch (err) {
+  const { data, err } = await ending;
+  if (data) dashboard.finish(data.case, data.report); // the final case file stays, plus the complaint
+  else {
     dashboard.stop();
     addError("Couldn't close the case file: " + err.message);
   }

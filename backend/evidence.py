@@ -58,7 +58,9 @@ BANKS = {
     "Punjab National Bank": r"\bpnb\b|punjab\s+national", "Bank of Baroda": r"\bbob\b|bank\s+of\s+baroda",
     "Canara Bank": r"\bcanara\b", "Union Bank": r"\bunion\s+bank", "Yes Bank": r"\byes\s+bank",
     "IDFC First Bank": r"\bidfc\b", "IndusInd Bank": r"\bindusind\b",
-    "RBI": r"\brbi\b|reserve\s+bank", "Paytm": r"\bpaytm\b", "PhonePe": r"\bphone\s?pe\b",
+    "RBI": r"\brbi\b|reserve\s+bank", "Paytm": r"\bpaytm\b",
+    # "phone pe" with a space is everyday Hindi ("on the phone"), so only the app's spelling counts.
+    "PhonePe": r"\bphonepe\b|\bphone\s+pay\b",
     "Google Pay": r"\bg\s?pay\b|google\s+pay", "BHIM": r"\bbhim\b", "Amazon Pay": r"amazon\s+pay",
 }
 
@@ -75,6 +77,9 @@ EXTRACTORS = {
     "find_bank_names": ("banks", find_banks),
 }
 CONTEXT_FIELDS = ("claimed_identity", "claimed_org", "amount", "payment_method", "note")
+# Models sometimes fill a field with a placeholder instead of leaving it out.
+EMPTY_VALUES = re.compile(r"^(?:none|n/?a|null|unknown|not\s+(?:mentioned|given|specified|provided)"
+                          r"|none\s+mentioned|-+)\.?$", re.I)
 
 
 def _tool(name: str, description: str, properties: dict | None = None) -> dict:
@@ -144,7 +149,8 @@ async def run(text: str) -> Findings:
                     except json.JSONDecodeError:
                         args = {}
                     findings.context = {k: str(v).strip() for k, v in args.items()
-                                        if k in CONTEXT_FIELDS and v and str(v).strip()}
+                                        if k in CONTEXT_FIELDS and str(v or "").strip()
+                                        and not EMPTY_VALUES.match(str(v).strip())}
                     result, recorded = "recorded", True
                 elif name in EXTRACTORS:
                     kind, extract = EXTRACTORS[name]

@@ -3,3 +3,4 @@ uvicorn>=0.30
 openai>=1.50
 python-dotenv>=1.0
 python-multipart>=0.0.9
+websockets>=12

@@ -29,6 +29,14 @@ def test_links_ignore_email_domains():
 def test_banks():
     assert find_banks("SBI head office, PhonePe ya Google Pay se bhejo") == ["SBI", "PhonePe", "Google Pay"]
     assert find_banks("Main abhi bas stand pe hoon") == []
+    assert find_banks("Aapke phone pe OTP aaya hoga") == []  # "on your phone", not the app
+    assert find_banks("PhonePe se bhejo") == ["PhonePe"]
+
+
+def test_placeholder_context_values_are_ignored():
+    from backend.evidence import EMPTY_VALUES
+    assert all(EMPTY_VALUES.match(v) for v in ["None mentioned", "N/A", "unknown", "not specified."])
+    assert not EMPTY_VALUES.match("UPI")
 
 
 def test_findings_dedupe_keeps_first_source():

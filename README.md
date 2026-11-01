@@ -9,9 +9,15 @@ them the call was recorded and reported, then lets out a ghostly Halloween screa
   first load takes about a minute)
 - **Demo video:** _coming soon_ <!-- TODO: add the video link -->
 
-| Call screen | Live case file |
-|---|---|
-| ![Call screen: a typed SBI KYC scam call, Dadaji stalling](docs/call-screen.png) | ![Live case file after the call: complaint draft, risk 95, Bank KYC, evidence](docs/case-file.png) |
+**The call screen.** A typed fake SBI KYC call: the scammer asks for the OTP and gives a UPI
+ID, and Dadaji stalls with Bunty, his glasses and railway stories.
+
+![Call screen: a typed SBI KYC scam call, Dadaji stalling](docs/call-screen.png)
+
+**The live case file after the call.** The cybercrime.gov.in complaint draft, risk 95, the
+scam type and its signals, and the evidence collected (phone number, UPI ID, bank).
+
+![Live case file after the call: complaint draft, risk 95, Bank KYC, evidence](docs/case-file.png)
 
 ## The problem
 

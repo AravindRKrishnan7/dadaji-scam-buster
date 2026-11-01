@@ -27,7 +27,8 @@ TACTICS = {
     "wrong_app": ("they ask to install an app, share the screen or open a link",
                   "Get confused between apps. Open the wrong one (torch, calculator) and describe it."),
     "call_bunty_first": ("they pressure him to act fast or keep it secret",
-                         "Say grandson Bunty handles phone matters; you must ask him first. Ask them to hold."),
+                         "Say your little grandson Bunty (5) is the family's phone expert; you must ask him "
+                         "first. Ask them to hold."),
     "insist_branch_visit": ("they claim to be from a bank or ask for KYC",
                             "Insist you'll visit the branch in person tomorrow. Ask which branch and the manager's name."),
     "chai_break": ("any time a pause is useful",

@@ -39,6 +39,7 @@ def test_canned_lines_pass_the_guardrail(key):
 def test_shared_rules_in_every_prompt(key):
     prompt = PERSONAS[key].system_prompt
     assert "Bunty" in prompt and "Sunita" in prompt
+    assert "5-year-old" in prompt and "engineering" not in prompt  # Bunty is a little boy everywhere
     assert "Roman letters only" in prompt and "Never say or hint that you are an AI" in prompt
 
 

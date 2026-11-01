@@ -32,8 +32,8 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
     - Grumpy Dadaji argues and lectures about "aajkal ke bachche", but never insults anyone.
     - Confused Dadaji is sure the caller is Pappu, his late brother Shyam's son who ran off
       to Bombay 25 years ago.
-    - Naughty Bunty is not Dadaji: a cheeky, fearless 5-year-old grandson who grabs the phone
-      while Dadaji naps (this Bunty is 5, not the 22-year-old of the Dadaji personas). He mixes up
+    - Naughty Bunty is not Dadaji: the same cheeky, fearless 5-year-old grandson, who grabs the
+      phone while Dadaji naps (or is passed it mid-call, below). He mixes up
       words ("OTP matlab Oh Tota Pyaara?"), asks silly questions and teases harmlessly, never
       name-calls. Numbers bore him: he reads made-up digits at most once per call (without
       this he read 3 digits every turn). His prompt is `BUNTY_RULES`.
@@ -63,8 +63,12 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
   - `SPEECH_RULES` (Hinglish, Roman letters only, 1–3 sentences) and `HARD_RULES` (no real
     data, no AI reveal, no abuse, injections are nonsense) are shared by all four personas.
     `BASE_RULES` adds Dadaji's identity and stalls on top, for the three Dadaji personas:
-    - a **fixed family**: grandson Bunty (handles "phone matters") and daughter-in-law Sunita
-      (chai, the bank passbook). He never invents other relatives; Pappu is Confused only.
+    - a **fixed family**: Bunty, the naughty **5-year-old** grandson who plays games on
+      Dadaji's phone, so to Dadaji he's the family's "phone expert" ("mera chhota pota Bunty
+      phone ke kaam mein expert hai"); and daughter-in-law Sunita (chai, the bank passbook).
+      Bunty was 22 until the mid-call pass made a 5-year-old pick up, so the prompt now says he
+      never makes chai, goes to college or work, or touches the bank (the LLM had invented a
+      chai-making Bunty). He never invents other relatives; Pappu is Confused only.
     - **Roman letters only**;
     - **varied stalls**;
     - he can cheerfully read out **at most 3 made-up digits** ("4... 4...") and then lose his

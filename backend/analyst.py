@@ -193,8 +193,13 @@ def hangup_phrase(text: str) -> str | None:
     return m.group() if m else None
 
 
-def tactic_note(key: str) -> str:
-    return "Stalling tactic: " + TACTICS[key][1]
+def tactic_instruction(key: str, overrides: dict[str, str] | None = None) -> str:
+    """The instruction for a tactic. A persona that isn't Dadaji (Naughty Bunty) can override it."""
+    return (overrides or {}).get(key) or TACTICS[key][1]
+
+
+def tactic_note(key: str, overrides: dict[str, str] | None = None) -> str:
+    return "Stalling tactic: " + tactic_instruction(key, overrides)
 
 
 def pick_tactic(proposed: str | None, recent: list[str], asked_to_repeat: bool) -> str:

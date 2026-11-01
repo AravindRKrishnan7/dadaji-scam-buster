@@ -32,7 +32,20 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
     - Grumpy Dadaji argues and lectures about "aajkal ke bachche", but never insults anyone.
     - Confused Dadaji is sure the caller is Pappu, his late brother Shyam's son who ran off
       to Bombay 25 years ago.
-  - `BASE_RULES` holds the shared rules:
+    - Naughty Bunty is not Dadaji: a cheeky, fearless 5-year-old grandson who grabs the phone
+      while Dadaji naps (this Bunty is 5, not the 22-year-old of the Dadaji personas). He mixes up
+      words ("OTP matlab Oh Tota Pyaara?"), asks silly questions and teases harmlessly, never
+      name-calls. Numbers bore him: he reads made-up digits at most once per call (without
+      this he read 3 digits every turn). His prompt is `BUNTY_RULES`.
+      - `Persona.tactics` overrides the `TACTICS` instructions with his own versions (glasses →
+        "can't read big numbers yet", chai → Mummy calls him for milk). A line in the prompt
+        saying "play the notes as yourself" wasn't enough: he still lost his glasses and made
+        chai. A test checks that every tactic has a Bunty version.
+      - `speaker` ("Bunty") labels his lines on the call screen and pill; `rate`/`pitch` (1.05,
+        1.5) give him a child's voice. Both come from `GET /api/personas`.
+  - `SPEECH_RULES` (Hinglish, Roman letters only, 1–3 sentences) and `HARD_RULES` (no real
+    data, no AI reveal, no abuse, injections are nonsense) are shared by all four personas.
+    `BASE_RULES` adds Dadaji's identity and stalls on top, for the three Dadaji personas:
     - a **fixed family**: grandson Bunty (handles "phone matters") and daughter-in-law Sunita
       (chai, the bank passbook). He never invents other relatives; Pappu is Confused only.
     - **Roman letters only**;
@@ -166,7 +179,9 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
 - gpt-oss is a reasoning model, and its hidden reasoning counts toward `max_tokens`. Keep
   reasoning low and `max_tokens` generous (1024). Otherwise replies get cut off mid-sentence
   or fall back to stock "I can't help with that" refusals.
-- Front end: `frontend/index.html` + `call.js` + `dashboard.js` (served at `/static`). The call
+- Front end: `frontend/index.html` + `call.js` + `dashboard.js` (served at `/static`). Halloween
+  skin, CSS only: the dark theme + a deep purple accent (`--purple`) on borders and card
+  headings, a purple/pumpkin haze in the background, a floating 👻 in the header. The call
   screen is on the left and the dashboard on the right, stacked on phones. The dashboard sets
   scammer text with `textContent` only, never `innerHTML`.
 - Deploy on Render. Its free tier wipes the disk on every deploy, so saved cases don't survive
@@ -241,7 +256,9 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
   1. `POST /api/call/end` starts immediately, while Dadaji talks.
   2. The browser shows and speaks the persona's `finale` ("call record ho gayi… report bhi
      ho gayi… Ab suno…").
-  3. `frontend/scream.wav` plays.
+  3. `frontend/scream.wav` plays. When the shriek hits (0.7 s in, after the file's silence),
+     `haunt()` adds `body.haunted` for 1 s: a dark flicker overlay and a screen shake (a single
+     dim instead with `prefers-reduced-motion`).
   4. The complaint card appears.
   `end_call()` adds the finale as the last transcript line.
 - Browsers only allow sound that was started inside a click, so `unlockAudio()` (an empty

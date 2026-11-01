@@ -77,7 +77,8 @@ def health():
 
 @app.get("/api/personas")
 def list_personas():
-    return [{"key": p.key, "name": p.name, "description": p.description, "finale": p.finale}
+    return [{"key": p.key, "name": p.name, "description": p.description, "finale": p.finale,
+             "speaker": p.speaker, "rate": p.rate, "pitch": p.pitch}
             for p in PERSONAS.values()]
 
 

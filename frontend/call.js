@@ -8,14 +8,17 @@ const levelBar = $("level").firstElementChild;
 let sessionId = null;
 let inCall = false;
 let busy = false; // a scammer turn is being processed
+let personas = {}; // key -> {key, name, description, finale, speaker, rate, pitch}
+// Who is on the line for the picked persona: "Dadaji", or "Bunty" for Naughty Bunty.
+const who = () => personas[personaSelect.value]?.speaker || "Dadaji";
 
 // ---------- UI helpers ----------
 const STATE_LABELS = { idle: "Ready", speaking: "Dadaji speaking…", listening: "Listening…",
                        transcribing: "Hearing you…", thinking: "Dadaji thinking…", typing: "Type to talk" };
 function setState(state) {
-  pill.textContent = STATE_LABELS[state];
+  pill.textContent = STATE_LABELS[state].replace("Dadaji", who());
   pill.className = state;
-  tapBtn.textContent = state === "speaking" ? "Interrupt Dadaji" : "Done speaking";
+  tapBtn.textContent = state === "speaking" ? "Interrupt " + who() : "Done speaking";
   tapBtn.disabled = !(state === "listening" || state === "speaking");
 }
 
@@ -43,7 +46,6 @@ async function postJSON(url, body, timeoutMs = 0) {
 }
 
 // ---------- Personas ----------
-let personas = {}; // key -> {key, name, description, finale}
 async function loadPersonas() {
   try {
     const list = await (await fetch("/api/personas")).json();
@@ -89,8 +91,10 @@ function speak(text) {
     const voice = voices.find((v) => v.voiceURI === voiceSelect.value);
     utterance.voice = voice || null;
     utterance.lang = voice ? voice.lang : "hi-IN";
-    utterance.rate = 0.9;  // a little slower...
-    utterance.pitch = 0.8; // ...and lower, to sound older
+    // Dadaji: a little slower and lower, to sound older. Bunty: quicker and higher.
+    const persona = personas[personaSelect.value];
+    utterance.rate = persona?.rate ?? 0.9;
+    utterance.pitch = persona?.pitch ?? 0.8;
     // Safety nets, so the call can't get stuck: speech that never starts (blocked, no voices)
     // is skipped after SPEECH_START_MS, and speech that never ends is cut off.
     let started = false;
@@ -134,6 +138,14 @@ function unlockScream() {
     .catch(() => { scream.muted = false; });
 }
 
+// The page flickers dark and shakes when the shriek hits. scream.wav opens with 0.7 s of
+// silence (a jump scare), so the effect waits for that.
+const SCREAM_SILENCE_MS = 700, HAUNT_MS = 1000;
+function haunt() {
+  document.body.classList.add("haunted");
+  setTimeout(() => document.body.classList.remove("haunted"), HAUNT_MS);
+}
+
 function playScream() {
   return new Promise((resolve) => {
     // Safety nets, like speak(): skip it if it hasn't started in 1.5 s, stop it after 5 s.
@@ -146,7 +158,7 @@ function playScream() {
     };
     const startTimer = setTimeout(() => { if (!started) done("never started, skipping"); }, 1500);
     const endTimer = setTimeout(() => done("timed out"), 5000);
-    scream.onplaying = () => { started = true; };
+    scream.onplaying = () => { started = true; setTimeout(haunt, SCREAM_SILENCE_MS); };
     scream.onended = () => done("end");
     scream.onerror = () => done("error loading audio");
     scream.muted = false;
@@ -306,7 +318,7 @@ async function scammerSays(text) {
       console.log("[finale] scammer is giving up, starting the finale");
       addMessage("", "Scammer is giving up…", "error");
     } else {
-      addMessage("Dadaji", data.reply, "dadaji");
+      addMessage(who(), data.reply, "dadaji");
     }
     if (inCall && !hungUp) {
       setState("speaking");
@@ -342,7 +354,7 @@ handoffBtn.addEventListener("click", async () => {
     log.replaceChildren();
     handoffBtn.hidden = true;
     tapBtn.hidden = endBtn.hidden = false;
-    addMessage("Dadaji", data.greeting, "dadaji");
+    addMessage(who(), data.greeting, "dadaji");
     setState("speaking");
     await speak(data.greeting);
     if (!inCall) return;
@@ -383,7 +395,7 @@ async function endCall() {
     // Finale: "this call was recorded and reported", then the ghostly scream.
     if (persona) {
       console.log("[finale] 2/5 Dadaji's last line");
-      addMessage("Dadaji", persona.finale, "dadaji");
+      addMessage(who(), persona.finale, "dadaji");
       setState("speaking");
       await speak(persona.finale);
     }

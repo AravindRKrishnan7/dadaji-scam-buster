@@ -19,6 +19,19 @@ scam type and its signals, and the evidence collected (phone number, UPI ID, ban
 
 ![Live case file after the call: complaint draft, risk 95, Bank KYC, evidence](docs/case-file.png)
 
+## Ghost in the Machine
+
+The scammer thinks they've found an easy target: a confused old man on the phone. They've
+actually called a ghost. Dadaji is the ghost on the line, a machine with a grandfather's voice
+that never gets tired, never gets scared and never hands over a single real digit. He haunts
+them for as long as they stay, quietly writing down every number, UPI ID and threat, and when
+they finally give up, the ghost shows itself: "Yeh poori call record ho gayi hai... Ab
+suno..." and a scream.
+
+He's built entirely on open-weight models (see [below](#why-open-source-and-open-models)),
+and made for Halloween and Día de los Muertos week, when the spirits come back to visit, and
+this one comes back to haunt the people who prey on families.
+
 ## The problem
 
 Phone scams are a daily problem in India. Callers pose as a bank ("your KYC has expired"),
@@ -102,7 +115,7 @@ flowchart LR
   complaint, and sees only the scammer's lines. `check_narrative()` rejects it if it mentions any
   phone number, UPI ID or link that isn't in the collected evidence; a template is used
   instead. Every other field is filled by plain code.
-- **Tests.** **141 unit tests** (139 run offline in about 2 s; 2 more replay real calls against
+- **Tests.** **145 unit tests** (143 run offline in about 3 s; 2 more replay real calls against
   Groq with `LIVE=1`) cover the guardrail, evidence regexes, risk floor, case merging, hang-up
   detection, reporter, SQLite storage, personas and transliteration.
 
@@ -145,9 +158,25 @@ Pick who answers the call:
 - **Sweet Dadaji**: forgetful, loving, and very slow with technology.
 - **Grumpy Dadaji**: argues with everything and lectures about kids these days (never abusive).
 - **Confused Dadaji**: sure the caller is his long-lost nephew Pappu.
+- **Naughty Bunty**: Dadaji's cheeky 5-year-old grandson grabs the phone first. He mixes up
+  words ("Uncle, OTP matlab kya? Oh Tota Pyaara?"), asks whether the bank is made of chocolate,
+  and teases the caller harmlessly, in a higher, quicker voice. Every stall tactic has a
+  5-year-old's version: instead of losing his glasses, he can't read big numbers yet.
 
-All three share the same family (grandson Bunty, daughter-in-law Sunita) and the same hard
-rules: never share real data, never admit to being an AI, never use abusive language.
+All four share the same hard rules: never share real data, never admit to being an AI, never
+use abusive language. The three Dadajis share one family (grandson Bunty, daughter-in-law
+Sunita).
+
+## Why it's a Shinchan project
+
+This project runs on the Shinchan spirit: mischievous, fearless, and completely unbothered by
+grown-ups who think they're in charge. The scammer has the script, the pressure tactics and
+the fake authority; Dadaji has a cup of chai and all the time in the world. He's the underdog
+who annoys the bad guys, wrecks their plan with silly questions and gets away with it.
+
+Naughty Bunty is the cheekiest example: a five-year-old who isn't scared of an "SBI officer"
+and would rather ask him a riddle. And the scream at the end is the final prank, on the person
+who spent the whole call trying to fool a family.
 
 ## Run it
 

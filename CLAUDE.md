@@ -200,9 +200,21 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
 - gpt-oss is a reasoning model, and its hidden reasoning counts toward `max_tokens`. Keep
   reasoning low and `max_tokens` generous (1024). Otherwise replies get cut off mid-sentence
   or fall back to stock "I can't help with that" refusals.
-- Front end: `frontend/index.html` + `call.js` + `dashboard.js` (served at `/static`). Halloween
-  skin, CSS only: the dark theme + a deep purple accent (`--purple`) on borders and card
-  headings, a purple/pumpkin haze in the background, a floating 👻 in the header. The call
+- Front end: `frontend/index.html` + `call.js` + `dashboard.js` (served at `/static`).
+  - Look: a refined dark theme, **no emojis anywhere in the UI**. Inter (Google Fonts), CSS
+    tokens on `:root` for surfaces, text, the type scale (`--fs-*`) and spacing (`--s1`…`--s6`).
+    Orange (`--accent`) is the only accent; deep purple is a hint (scammer bubbles, card-heading
+    icons, the background haze). Status colours: green = listening/live, red = End call.
+  - Icons: an inline SVG sprite at the top of `index.html` (Lucide-style 24px, 2px round
+    strokes), used as `<svg class="i"><use href="#i-name"/></svg>`. The header logo is the
+    ghost (`#i-ghost`), gently floating. Don't put an icon inside a button whose text JS sets
+    (`#tap`, the Copy buttons): `textContent` would wipe it.
+  - **Awareness card** (`backend/awareness.py`, static, no LLM): after End call,
+    `/api/call/end` (and `GET /api/cases/{id}`) returns `awareness = card_for(scam_type)`:
+    6 cards (bank_kyc, otp_fraud, fake_fine_threat, digital_arrest, upi_refund, other), each a
+    title, a one-line "how it works" and 3–4 tips, plus the 1930 / cybercrime.gov.in line.
+    courier_customs → digital_arrest, electricity_bill → fake_fine_threat, everything else →
+    other. Shown under the complaint. `tests/test_awareness.py`. The call
   screen is on the left and the dashboard on the right, stacked on phones. The dashboard sets
   scammer text with `textContent` only, never `innerHTML`.
 - Deploy on Render. Its free tier wipes the disk on every deploy, so saved cases don't survive

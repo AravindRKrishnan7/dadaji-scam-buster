@@ -120,9 +120,10 @@ flowchart LR
 
 ## Limitations and future scope
 
-- **It's a web app, not a phone app yet.** Today you put the scammer on speaker next to the
-  browser. Next: an Android app using the call-screening API to hand the call to Dadaji
-  directly.
+- **The call is simulated in the browser.** In this prototype, the person playing the scammer
+  speaks into the mic or types; it isn't connected to a real phone call yet. Real phone-call
+  integration is future scope: an Android app using the call-screening API to hand the call to
+  Dadaji directly.
 - **Real telephony.** Route calls through a telephony provider so Dadaji answers on the line
   itself, with no speaker or second device.
 - **More Indian languages.** Dadaji speaks Hinglish only; Tamil, Telugu, Bengali, Marathi and

@@ -12,7 +12,7 @@ from backend.guardrail import INJECTION_PHRASES, check_output, clean, safe_reply
     "₹5000? Itna paisa kahan se laun?",
     "Ruko, ek... do... arre chashma kahan gaya.",
     "Beta, main AI nahi hoon, Dadaji hoon.",
-    "Haan haan, SBI wale ho? Bunty bhi wahin kaam karta hai.",
+    "Haan haan, SBI wale ho? Bunty bhi wahin jaata hai, lollipop lene.",
 ])
 def test_safe_replies_pass(reply):
     assert check_output(reply).problems == []

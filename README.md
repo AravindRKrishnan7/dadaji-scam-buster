@@ -170,8 +170,9 @@ Bunty takes over for the rest of the call. The dashboard shows "Bunty took the p
 **Pass to Bunty** button does it by hand.
 
 All four share the same hard rules: never share real data, never admit to being an AI, never
-use abusive language. The three Dadajis share one family (grandson Bunty, daughter-in-law
-Sunita).
+use abusive language. The three Dadajis share one family: Bunty, the naughty 5-year-old
+grandson who plays games on Dadaji's phone and so is "the family's phone expert", and
+daughter-in-law Sunita, who makes the chai.
 
 ## Why it's a Shinchan project
 

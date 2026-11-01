@@ -87,7 +87,7 @@ def test_risk_floor_rule(texts, expected):
 
 @pytest.mark.parametrize("text", [
     "main fine hoon beta, aap kaise ho?",      # "fine" as in okay
-    "mera bank SBI hai, Bunty ne khulwaya tha", # a bank mentioned, not claimed
+    "mera bank SBI hai, Sunita ne khulwaya tha", # a bank mentioned, not claimed
     "Paytm pe 500 bhejo",                       # a demand, but no authority claim
     "fir se bolo, OTP batao",                   # Hinglish "fir" (again) isn't an FIR
 ])

@@ -138,6 +138,14 @@ function unlockScream() {
     .catch(() => { scream.muted = false; });
 }
 
+// The page flickers dark and shakes when the shriek hits. scream.wav opens with 0.7 s of
+// silence (a jump scare), so the effect waits for that.
+const SCREAM_SILENCE_MS = 700, HAUNT_MS = 1000;
+function haunt() {
+  document.body.classList.add("haunted");
+  setTimeout(() => document.body.classList.remove("haunted"), HAUNT_MS);
+}
+
 function playScream() {
   return new Promise((resolve) => {
     // Safety nets, like speak(): skip it if it hasn't started in 1.5 s, stop it after 5 s.
@@ -150,7 +158,7 @@ function playScream() {
     };
     const startTimer = setTimeout(() => { if (!started) done("never started, skipping"); }, 1500);
     const endTimer = setTimeout(() => done("timed out"), 5000);
-    scream.onplaying = () => { started = true; };
+    scream.onplaying = () => { started = true; setTimeout(haunt, SCREAM_SILENCE_MS); };
     scream.onended = () => done("end");
     scream.onerror = () => done("error loading audio");
     scream.muted = false;

@@ -7,7 +7,7 @@ them the call was recorded and reported, then lets out a ghostly Halloween screa
 
 - **Live demo:** https://dadaji-scam-buster.onrender.com (free tier: if it has been idle, the
   first load takes about a minute)
-- **Demo video:** _coming soon_ <!-- TODO: add the video link -->
+- **Demo video:** https://www.youtube.com/watch?v=ixqWkq_5KTs
 
 **The call screen.** A typed fake SBI KYC call: Dadaji stalls (his glasses, the caller's
 employee ID "for his diary"), and when the scammer pushes for the OTP a second time he passes

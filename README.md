@@ -11,7 +11,7 @@ them the call was recorded and reported, then lets out a ghostly Halloween screa
 
 | Call screen | Live case file |
 |---|---|
-| _Screenshot coming: `docs/call-screen.png`_ <!-- ![Call screen](docs/call-screen.png) --> | _Screenshot coming: `docs/case-file.png`_ <!-- ![Live case file](docs/case-file.png) --> |
+| ![Call screen: a typed SBI KYC scam call, Dadaji stalling](docs/call-screen.png) | ![Live case file after the call: complaint draft, risk 95, Bank KYC, evidence](docs/case-file.png) |
 
 ## The problem
 

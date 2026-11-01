@@ -116,7 +116,7 @@ def transcript_text(case: CaseFile) -> str:
              "Scammer = the caller. Dadaji = the AI assistant that answered for the user.", ""]
     for m in case.transcript:
         mins, secs = divmod(int(m["t"]), 60)
-        lines.append(f"[{mins:02d}:{secs:02d}] {'Scammer' if m['role'] == 'scammer' else 'Dadaji'}: {m['text']}")
+        lines.append(f"[{mins:02d}:{secs:02d}] {'Scammer' if m['role'] == 'scammer' else m.get('speaker', 'Dadaji')}: {m['text']}")
     return "\n".join(lines) + "\n"
 
 

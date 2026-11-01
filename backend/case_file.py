@@ -24,6 +24,7 @@ class CaseFile(BaseModel):
     started_at: float = Field(default_factory=time.time)  # the handoff: Dadaji picked up
     ended_at: float | None = None            # set by End call; stops the time-wasted timer
     hangup: dict | None = None               # {turn, source: phrase|analyst, detail}: scammer gave up
+    phone_passed: dict | None = None         # {turn, source: rule|button, detail, from}: Bunty took the phone
     turns: int = 0                           # scammer turns so far
     scam_type: str = "unknown"
     risk_score: int = 0
@@ -37,10 +38,14 @@ class CaseFile(BaseModel):
     injection_attempts: list[dict] = []      # {turn, source, score}
     guardrail_blocks: list[dict] = []        # {turn, draft (redacted), problems}
     timings: dict[str, float] = {}           # seconds per pipeline stage, latest turn
-    transcript: list[dict] = []              # {role: "scammer"|"dadaji", text, t}
+    transcript: list[dict] = []              # {role: "scammer"|"dadaji", text, t, speaker?}
 
-    def add_message(self, role: str, text: str):
-        self.transcript.append({"role": role, "text": text, "t": round(time.time() - self.started_at, 1)})
+    def add_message(self, role: str, text: str, speaker: str | None = None):
+        """speaker is set when the defending side isn't Dadaji (Bunty), for the transcript."""
+        msg = {"role": role, "text": text, "t": round(time.time() - self.started_at, 1)}
+        if speaker and speaker != "Dadaji":
+            msg["speaker"] = speaker
+        self.transcript.append(msg)
 
     def apply_analysis(self, a: Analysis | None, injection: bool = False, floor: FloorHit | None = None):
         """Merge the analyst's latest view into what we already know.

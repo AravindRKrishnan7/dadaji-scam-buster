@@ -2,13 +2,15 @@
 const $ = (id) => document.getElementById(id);
 const log = $("log"), input = $("input"), send = $("send"), pill = $("pill");
 const handoffBtn = $("handoff"), tapBtn = $("tap"), endBtn = $("end"), voiceSelect = $("voice");
-const personaSelect = $("persona");
+const personaSelect = $("persona"), passBtn = $("pass");
 const levelBar = $("level").firstElementChild;
 
 let sessionId = null;
 let inCall = false;
 let busy = false; // a scammer turn is being processed
 let personas = {}; // key -> {key, name, description, finale, speaker, rate, pitch}
+const PASS_TO = "bunty"; // who Dadaji passes the phone to
+let pickedPersona = null; // the persona picked before Bunty took the phone, restored after the call
 // Who is on the line for the picked persona: "Dadaji", or "Bunty" for Naughty Bunty.
 const who = () => personas[personaSelect.value]?.speaker || "Dadaji";
 
@@ -291,6 +293,39 @@ function stopMic() {
   stream = audioCtx = analyser = null;
 }
 
+// ---------- Passing the phone to Bunty ----------
+// The server passes it on the scammer's second push for phone/app steps, or the button asks.
+const showPassBtn = () => { passBtn.hidden = personaSelect.value === PASS_TO; };
+
+// Dadaji's fixed line in his voice, then the picker switches and Bunty's first line is in his.
+async function passPhone(p) {
+  addMessage(who(), p.line, "dadaji");
+  if (inCall) { setState("speaking"); await speak(p.line); }
+  pickedPersona = personaSelect.value;
+  personaSelect.value = p.persona;
+  passBtn.hidden = true;
+  addMessage(who(), p.greeting, "dadaji");
+  if (inCall) { setState("speaking"); await speak(p.greeting); }
+}
+
+passBtn.addEventListener("click", async () => {
+  unlockAudio(); // inside the click, before any await
+  if (busy || !sessionId) return;
+  busy = true;
+  send.disabled = passBtn.disabled = true;
+  discardTurn();
+  try {
+    await passPhone(await postJSON("/api/call/pass", { session_id: sessionId }));
+  } catch (err) {
+    addError(err.message);
+  } finally {
+    busy = false;
+    send.disabled = passBtn.disabled = false;
+  }
+  if (inCall) stream ? startListening() : setState("typing");
+  else setState("idle");
+});
+
 // ---------- One scammer turn (spoken or typed) ----------
 async function scammerSays(text) {
   if (busy) return;
@@ -310,6 +345,7 @@ async function scammerSays(text) {
       // The handoff button hides until then, so the typed case isn't left open.
       endBtn.hidden = false;
       handoffBtn.hidden = true;
+      if (!data.passed) showPassBtn();
     }
     if (data.hangup) {
       // The scammer is giving up: Dadaji gets the last word before they can hang up.
@@ -317,12 +353,14 @@ async function scammerSays(text) {
       hungUp = true;
       console.log("[finale] scammer is giving up, starting the finale");
       addMessage("", "Scammer is giving up…", "error");
+    } else if (data.passed) {
+      await passPhone(data.passed); // the scammer pushed for phone steps again
     } else {
       addMessage(who(), data.reply, "dadaji");
-    }
-    if (inCall && !hungUp) {
-      setState("speaking");
-      await speak(data.reply);
+      if (inCall) {
+        setState("speaking");
+        await speak(data.reply);
+      }
     }
   } catch (err) {
     addError(err.message);
@@ -354,6 +392,7 @@ handoffBtn.addEventListener("click", async () => {
     log.replaceChildren();
     handoffBtn.hidden = true;
     tapBtn.hidden = endBtn.hidden = false;
+    showPassBtn();
     addMessage(who(), data.greeting, "dadaji");
     setState("speaking");
     await speak(data.greeting);
@@ -385,7 +424,7 @@ async function endCall() {
   stopMic();
   speechSynthesis.cancel();
   sessionId = null;
-  tapBtn.hidden = endBtn.hidden = true;
+  tapBtn.hidden = endBtn.hidden = passBtn.hidden = true;
   // The server stops the timer, saves the case and writes the complaint (a couple of seconds),
   // while Dadaji delivers his last line. Errors are caught here and shown after the finale.
   const ending = postJSON("/api/call/end", { session_id: id }, END_TIMEOUT_MS)
@@ -409,6 +448,7 @@ async function endCall() {
   handoffBtn.hidden = false;
   setState("idle");
   lockPersona(false);
+  if (pickedPersona) { personaSelect.value = pickedPersona; pickedPersona = null; } // back to their pick
   addMessage("", "Call ended", "error");
   console.log("[finale] 4/5 waiting for the complaint");
   const { data, err } = await ending;

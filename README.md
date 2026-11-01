@@ -163,6 +163,12 @@ Pick who answers the call:
   and teases the caller harmlessly, in a higher, quicker voice. Every stall tactic has a
   5-year-old's version: instead of losing his glasses, he can't read big numbers yet.
 
+**Mid-call pass:** phone matters are Bunty's job. When the scammer pushes for phone or app
+steps a second time (open the app, share the OTP, install something, click a link), Dadaji
+says "Ruko beta, yeh phone ka kaam Bunty dekhta hai, usko deta hoon... BUNTYYY!" and Naughty
+Bunty takes over for the rest of the call. The dashboard shows "Bunty took the phone", and a
+**Pass to Bunty** button does it by hand.
+
 All four share the same hard rules: never share real data, never admit to being an AI, never
 use abusive language. The three Dadajis share one family (grandson Bunty, daughter-in-law
 Sunita).

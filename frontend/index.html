@@ -70,6 +70,8 @@
     .card { background: var(--card); border-radius: 10px; padding: 10px 12px; min-width: 0;
             border-top: 2px solid color-mix(in srgb, var(--purple) 60%, transparent); }
     .card.wide { grid-column: 1 / -1; }
+    .card.passed { border-top-color: var(--accent); }
+    .card.passed h3 { color: var(--accent); }
     h3 { margin: 0 0 6px; font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--purple-soft); font-weight: 600; }
     .risk-row { display: flex; align-items: center; gap: 10px; }
     #risk { font-size: 2.4rem; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
@@ -140,6 +142,7 @@
     <div class="controls">
       <button id="handoff">📞 Talk to my grandfather</button>
       <button id="tap" class="secondary" hidden>Done speaking</button>
+      <button id="pass" class="secondary" hidden title="Dadaji hands the phone to his grandson Bunty">📱 Pass to Bunty</button>
       <button id="end" class="danger" hidden>End call</button>
     </div>
     <form id="form">
@@ -154,6 +157,10 @@
       <section class="card wide">
         <h3>⏱ Scammer time wasted</h3>
         <div class="timer-row"><span id="clock">00:00</span><span id="totals" class="muted"></span></div>
+      </section>
+      <section class="card wide passed" id="passcard" hidden>
+        <h3>📱 Bunty took the phone</h3>
+        <div id="passtext" class="muted"></div>
       </section>
       <section class="card wide" id="reportcard" hidden>
         <h3>📝 Complaint draft for cybercrime.gov.in</h3>

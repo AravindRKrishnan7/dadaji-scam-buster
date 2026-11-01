@@ -193,6 +193,37 @@ def hangup_phrase(text: str) -> str | None:
     return m.group() if m else None
 
 
+# Phone/app steps: open an app, share the OTP, install or download something, click a link,
+# screen sharing. The PASS_AFTER-th push makes Dadaji pass the phone to Bunty, since "phone
+# matters" are Bunty's job. Checked over every scammer message, like the risk floor.
+PASS_AFTER = 2
+_TELL = (r"bata\w*|bol\w*|share|bhej\w*|send|tell|de\s+d\w*|dijiye|do|padh\w*|read|forward"
+         r"|likh\w*|type|enter|daal\w*")
+# One pattern per kind of push, checked separately: one match can't hide another (in "OTP nahi
+# mil raha toh app kholo", the OTP match is a warning-like "nahi" but "app kholo" still counts).
+PHONE_STEPS = [re.compile(p, re.I) for p in (
+    r"\b(?:app|aip|application)\b.{0,30}?\b(?:khol\w*|open|chalu|install\w*|download\w*)",
+    r"\b(?:khol\w*|open|install\w*|download\w*)\b.{0,20}?\b(?:app|aip|application)\b",
+    r"\b(?:install|instal|download|dawnload|downlod)\w*",
+    r"\b(?:otp|o\.t\.p\.?|otipi|(?<!pin\s)code)(?:\W|$).{0,40}?\b(?:" + _TELL + r")\b",
+    r"\b(?:" + _TELL + r")\b.{0,15}?\b(?:otp|o\.t\.p|otipi)\b",
+    r"\blink\b.{0,40}?\b(?:click|klik|khol\w*|open|daba\w*|touch|press|tap)\w*",
+    r"\b(?:click|klik|tap|khol\w*|open)\w*\s+(?:\w+\s+){0,2}link\b",
+    r"\b(?:anydesk|any\s+desk|teamviewer|team\s+viewer|quick\s*support|screen\s*share\w*)\b",
+)]
+# "OTP kisi ko mat batana" / "never share your OTP" is a warning (scammers say it too), not a push.
+_WARNING = re.compile(r"\b(?:mat|matt|na|nahi|nahin|never|don'?t|do\s+not)\b", re.I)
+
+
+def phone_step(text: str) -> str | None:
+    """The phrase if this message pushes for a phone or app step, else None."""
+    for pattern in PHONE_STEPS:
+        for m in pattern.finditer(text):
+            if not _WARNING.search(text[max(0, m.start() - 15):m.end() + 12]):
+                return m.group()
+    return None
+
+
 def tactic_instruction(key: str, overrides: dict[str, str] | None = None) -> str:
     """The instruction for a tactic. A persona that isn't Dadaji (Naughty Bunty) can override it."""
     return (overrides or {}).get(key) or TACTICS[key][1]

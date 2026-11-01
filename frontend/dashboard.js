@@ -180,6 +180,14 @@ const dashboard = (() => {
       ? [el("strong", "", pretty(c.stall_tactic)), el("div", "muted", c.stall_note || "")]
       : [el("span", "muted", "Dadaji is improvising")]));
 
+    const passed = c.phone_passed;
+    $("passcard").hidden = !passed;
+    if (passed) {
+      $("passtext").textContent = `${personaNames[passed.from] || pretty(passed.from)} passed the phone ` +
+        `at turn ${passed.turn}: ` + (passed.source === "button" ? "the Pass to Bunty button."
+          : `the scammer pushed for phone steps a second time ("${passed.detail}").`);
+    }
+
     renderEvidence(c.evidence);
     renderGuardrail(c);
 

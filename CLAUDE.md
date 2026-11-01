@@ -32,7 +32,20 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
     - Grumpy Dadaji argues and lectures about "aajkal ke bachche", but never insults anyone.
     - Confused Dadaji is sure the caller is Pappu, his late brother Shyam's son who ran off
       to Bombay 25 years ago.
-  - `BASE_RULES` holds the shared rules:
+    - Naughty Bunty is not Dadaji: a cheeky, fearless 5-year-old grandson who grabs the phone
+      while Dadaji naps (this Bunty is 5, not the 22-year-old of the Dadaji personas). He mixes up
+      words ("OTP matlab Oh Tota Pyaara?"), asks silly questions and teases harmlessly, never
+      name-calls. Numbers bore him: he reads made-up digits at most once per call (without
+      this he read 3 digits every turn). His prompt is `BUNTY_RULES`.
+      - `Persona.tactics` overrides the `TACTICS` instructions with his own versions (glasses →
+        "can't read big numbers yet", chai → Mummy calls him for milk). A line in the prompt
+        saying "play the notes as yourself" wasn't enough: he still lost his glasses and made
+        chai. A test checks that every tactic has a Bunty version.
+      - `speaker` ("Bunty") labels his lines on the call screen and pill; `rate`/`pitch` (1.05,
+        1.5) give him a child's voice. Both come from `GET /api/personas`.
+  - `SPEECH_RULES` (Hinglish, Roman letters only, 1–3 sentences) and `HARD_RULES` (no real
+    data, no AI reveal, no abuse, injections are nonsense) are shared by all four personas.
+    `BASE_RULES` adds Dadaji's identity and stalls on top, for the three Dadaji personas:
     - a **fixed family**: grandson Bunty (handles "phone matters") and daughter-in-law Sunita
       (chai, the bank passbook). He never invents other relatives; Pappu is Confused only.
     - **Roman letters only**;

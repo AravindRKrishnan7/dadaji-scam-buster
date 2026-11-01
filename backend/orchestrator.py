@@ -100,13 +100,13 @@ async def handle_turn(session: dict, text: str) -> str | None:
     else:
         tactic = analyst.pick_tactic(analysis.stall_tactic if analysis else None,
                                      case.tactics_used, repeated)
+    persona = PERSONAS[session["persona"]]
     case.stall_tactic = tactic
-    case.stall_note = analyst.TACTICS[tactic][1]
+    case.stall_note = analyst.tactic_instruction(tactic, persona.tactics)
     case.tactics_used.append(tactic)
     await dashboard.publish(case)
 
-    persona = PERSONAS[session["persona"]]
-    note = analyst.tactic_note(tactic)
+    note = analyst.tactic_note(tactic, persona.tactics)
     extra_check = None
     if repeated:
         # He has asked once already. Say so, and block a draft that asks again anyway.

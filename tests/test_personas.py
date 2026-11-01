@@ -5,9 +5,24 @@ from backend.guardrail import check_output
 from backend.personas import DEFAULT_PERSONA, PERSONAS
 
 
-def test_all_three_personas_exist():
-    assert set(PERSONAS) == {"sweet", "grumpy", "confused"}
+def test_all_four_personas_exist():
+    assert set(PERSONAS) == {"sweet", "grumpy", "confused", "bunty"}
     assert DEFAULT_PERSONA == "sweet"
+
+
+def test_naughty_bunty():
+    from fastapi.testclient import TestClient
+
+    from backend.main import app
+    bunty = PERSONAS["bunty"]
+    assert bunty.name == "Naughty Bunty" and bunty.speaker == "Bunty"
+    assert "5-year-old" in bunty.system_prompt and "You are Dadaji" not in bunty.system_prompt
+    assert bunty.pitch > PERSONAS["sweet"].pitch  # a child's voice, not an old man's
+    client = TestClient(app)
+    start = client.post("/api/call/start", json={"persona": "bunty"}).json()
+    assert start["persona"] == "bunty" and start["greeting"] == bunty.greeting
+    listed = {p["key"]: p for p in client.get("/api/personas").json()}["bunty"]
+    assert listed["speaker"] == "Bunty" and listed["pitch"] == bunty.pitch
 
 
 @pytest.mark.parametrize("key", PERSONAS)
@@ -45,3 +60,11 @@ def test_finale_is_the_last_line_of_the_transcript():
                                       "text": PERSONAS["confused"].finale}
     personas = {p["key"]: p for p in client.get("/api/personas").json()}
     assert personas["grumpy"]["finale"] == PERSONAS["grumpy"].finale
+
+
+def test_bunty_plays_every_tactic_his_own_way():
+    from backend.analyst import TACTICS, tactic_note
+    bunty = PERSONAS["bunty"]
+    assert set(bunty.tactics) == set(TACTICS)  # a new tactic needs a Bunty version too
+    assert "glasses" not in tactic_note("lost_glasses", bunty.tactics)
+    assert tactic_note("lost_glasses") == "Stalling tactic: " + TACTICS["lost_glasses"][1]

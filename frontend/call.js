@@ -36,7 +36,7 @@ function addMessage(who, text, cls) {
   log.append(div);
   log.scrollTop = log.scrollHeight;
 }
-const addError = (text) => addMessage("", "⚠ " + text, "error");
+const addError = (text) => addMessage("", text, "error");
 
 async function postJSON(url, body, timeoutMs = 0) {
   const res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" },
@@ -439,7 +439,7 @@ async function endCall() {
       await speak(persona.finale);
     }
     console.log("[finale] 3/5 scream");
-    pill.textContent = "👻 AAAAAAH!";
+    pill.textContent = "AAAAAAH!";
     await playScream();
   } catch (err) {
     console.error("[finale] sound failed, skipping ahead", err);
@@ -453,7 +453,7 @@ async function endCall() {
   console.log("[finale] 4/5 waiting for the complaint");
   const { data, err } = await ending;
   if (data) {
-    dashboard.finish(data.case, data.report); // the final case file stays, plus the complaint
+    dashboard.finish(data.case, data.report, data.awareness); // the final case file stays, plus the complaint
     console.log("[finale] 5/5 complaint shown");
   } else {
     dashboard.stop();

@@ -31,7 +31,7 @@ const dashboard = (() => {
   function watch(sessionId) {
     if (sessionId === watching) return;
     stop();
-    $("reportcard").hidden = true; // a new call: the last complaint goes away
+    $("reportcard").hidden = $("awarecard").hidden = true; // a new call: the last complaint goes away
     watching = sessionId;
     connect();
   }
@@ -67,12 +67,23 @@ const dashboard = (() => {
     $("conn").className = "conn " + (state === "live" ? "live" : "");
   }
 
-  // The call is over: show the final case file (timer stopped), the complaint and the total.
-  function finish(c, report) {
+  // The call is over: show the final case file (timer stopped), the complaint, the awareness
+  // card for this scam type and the total.
+  function finish(c, report, awareness) {
     stop();
     render(c);
     loadStats();
+    if (awareness) showAwareness(awareness);
     if (report) showReport(report);
+  }
+
+  // ---------- How this scam works (a static card from the server, no LLM) ----------
+  function showAwareness(a) {
+    $("awaretitle").textContent = a.title;
+    $("awarehow").textContent = a.how;
+    $("awaretips").replaceChildren(...a.tips.map((tip) => el("li", "", tip)));
+    $("awarereport").textContent = a.report;
+    $("awarecard").hidden = false;
   }
 
   // ---------- Complaint ----------
@@ -91,7 +102,7 @@ const dashboard = (() => {
       area.remove();
     }
     const label = btn.textContent;
-    btn.textContent = "Copied ✓";
+    btn.textContent = "Copied";
     setTimeout(() => (btn.textContent = label), 1500);
   }
 
@@ -237,7 +248,7 @@ const dashboard = (() => {
     ].sort((a, b) => a.turn - b.turn);
     $("guard").replaceChildren(...(items.length
       ? items.map((i) => { const li = el("li"); li.append(el("span", "turn", `T${i.turn}`), " ", i.text); return li; })
-      : [el("li", "muted", c.turns ? "All replies passed ✓" : "Nothing yet")]));
+      : [el("li", "muted", c.turns ? "All replies passed" : "Nothing yet")]));
   }
 
   const setPersonas = (list) => { personaNames = Object.fromEntries(list.map((p) => [p.key, p.name])); };

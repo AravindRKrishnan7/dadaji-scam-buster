@@ -9,7 +9,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from backend import config, dashboard, db, orchestrator, reporter, stt
+from backend import awareness, config, dashboard, db, orchestrator, reporter, stt
 from backend.case_file import CaseFile
 from backend.llm import GroqUnavailable
 from backend.personas import DEFAULT_PERSONA, PASS_TO, PERSONAS
@@ -137,7 +137,9 @@ async def call_end(req: CallEndRequest):
     if "ending" not in session:
         session["ending"] = asyncio.create_task(orchestrator.end_call(session))
     await session["ending"]
-    return {"case": session["case"].model_dump(), "report": session["report"]}
+    case = session["case"]
+    return {"case": case.model_dump(), "report": session["report"],
+            "awareness": awareness.card_for(case.scam_type)}
 
 
 async def find_case(session_id: str) -> tuple[CaseFile, dict | None]:
@@ -157,7 +159,7 @@ def download(name: str) -> dict:
 @app.get("/api/cases/{session_id}")
 async def get_case(session_id: str):
     case, report = await find_case(session_id)
-    return {"case": case.model_dump(), "report": report}
+    return {"case": case.model_dump(), "report": report, "awareness": awareness.card_for(case.scam_type)}
 
 
 @app.get("/api/cases/{session_id}/report")

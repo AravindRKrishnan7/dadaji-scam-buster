@@ -9,15 +9,17 @@ them the call was recorded and reported, then lets out a ghostly Halloween screa
   first load takes about a minute)
 - **Demo video:** _coming soon_ <!-- TODO: add the video link -->
 
-**The call screen.** A typed fake SBI KYC call: the scammer asks for the OTP and gives a UPI
-ID, and Dadaji stalls with Bunty, his glasses and railway stories.
+**The call screen.** A typed fake SBI KYC call: Dadaji stalls (his glasses, the caller's
+employee ID "for his diary"), and when the scammer pushes for the OTP a second time he passes
+the phone to his 5-year-old grandson Bunty.
 
-![Call screen: a typed SBI KYC scam call, Dadaji stalling](docs/call-screen.png)
+![Call screen: a typed SBI KYC scam call, Dadaji stalling, then passing the phone to Bunty](docs/call-screen.png)
 
-**The live case file after the call.** The cybercrime.gov.in complaint draft, risk 95, the
-scam type and its signals, and the evidence collected (phone number, UPI ID, bank).
+**The live case file after the call.** "Bunty took the phone", the cybercrime.gov.in
+complaint draft, a "how this scam works, and how to stay safe" card for the detected scam
+type, risk 95, the signals, and the evidence collected (phone number, UPI ID, bank).
 
-![Live case file after the call: complaint draft, risk 95, Bank KYC, evidence](docs/case-file.png)
+![Live case file after the call: complaint draft, awareness card, risk 95, Bank KYC, evidence](docs/case-file.png)
 
 ## Ghost in the Machine
 
@@ -111,11 +113,15 @@ flowchart LR
 - **Auto-finale hang-up detection.** When the scammer gives up ("phone cut kar raha hoon",
   "bye bye, you are stupid"), a phrase check (or the analyst's `hanging_up` flag) ends the call
   and the finale plays by itself, before they can hang up.
+- **Awareness card, no LLM.** After the call, a static map (`backend/awareness.py`) picks a
+  "how this scam works, and how to stay safe" card for the detected scam type (bank KYC, OTP
+  fraud, fake fine/threat, digital arrest, UPI refund, or a general one), with 3–4 tips and the
+  1930 helpline.
 - **The reporter can't invent evidence.** The LLM writes only the free-text part of the
   complaint, and sees only the scammer's lines. `check_narrative()` rejects it if it mentions any
   phone number, UPI ID or link that isn't in the collected evidence; a template is used
   instead. Every other field is filled by plain code.
-- **Tests.** **145 unit tests** (143 run offline in about 3 s; 2 more replay real calls against
+- **Tests.** **181 unit tests** (179 run offline in about 4 s; 2 more replay real calls against
   Groq with `LIVE=1`) cover the guardrail, evidence regexes, risk floor, case merging, hang-up
   detection, reporter, SQLite storage, personas and transliteration.
 

@@ -43,6 +43,23 @@ fails (including a 429), the persona's `fallbacks` line is used, so the call nev
         chai. A test checks that every tactic has a Bunty version.
       - `speaker` ("Bunty") labels his lines on the call screen and pill; `rate`/`pitch` (1.05,
         1.5) give him a child's voice. Both come from `GET /api/personas`.
+  - **Passing the phone to Bunty** (mid-call; "handoff" already means the Talk to my
+    grandfather button, so the code says "pass"): on the scammer's **second** push for
+    phone/app steps, Dadaji says the fixed `PASS_LINE` ("...usko deta hoon... BUNTYYY!") instead
+    of an LLM reply, and `session["persona"]` becomes `bunty` for the rest of the call.
+    - `analyst.PHONE_STEPS`: open/install/download an app, tell/share the OTP (or "code", not
+      "pin code"), click a link, AnyDesk/screen share. One pattern per kind, checked separately,
+      so one match can't hide another. Skipped near mat/nahi/never/don't ("OTP kisi ko mat
+      batana" is a warning). Counted over all scammer messages, after the hang-up check.
+    - `orchestrator.pass_phone()` adds `PASS_LINE` and Bunty's `pass_greeting` to history and
+      transcript, sets `case.phone_passed = {turn, source: rule|button, detail, from}`, and
+      `/api/chat` returns `passed: {persona, line, greeting}`. Every later Bunty reply gets
+      `PASS_NOTE` (the earlier replies were Dadaji's).
+    - "📱 Pass to Bunty" button (`POST /api/call/pass`, 409 if ended or already Bunty) does the
+      same by hand. The browser speaks the line in Dadaji's voice, switches the locked picker to
+      Bunty, speaks the greeting in Bunty's, and restores the user's pick after the finale.
+    - Dashboard: a "Bunty took the phone" card. Transcript lines carry `speaker: "Bunty"`, so
+      the transcript download labels them. `tests/test_pass_to_bunty.py`.
   - `SPEECH_RULES` (Hinglish, Roman letters only, 1–3 sentences) and `HARD_RULES` (no real
     data, no AI reveal, no abuse, injections are nonsense) are shared by all four personas.
     `BASE_RULES` adds Dadaji's identity and stalls on top, for the three Dadaji personas:

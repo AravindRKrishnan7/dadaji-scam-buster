@@ -90,6 +90,7 @@ class Persona:
     rate: float = 0.9   # browser speech: a little slower...
     pitch: float = 0.8  # ...and lower, to sound older
     tactics: dict[str, str] = field(default_factory=dict)  # tactic key -> this persona's own version
+    pass_greeting: str = ""  # first line after Dadaji passes him the phone mid-call
 
 
 PERSONAS: dict[str, Persona] = {
@@ -180,6 +181,8 @@ Call the caller "Pappu" in every reply, whatever stall you are using.
                "crime mein report bhi kar di. Ab suno...",
         reminder="Be Bunty: a cheeky 5-year-old. Call them Uncle, and add a silly question or a "
                  "harmless tease.",
+        pass_greeting="Hellooo Uncle! Main Bunty! Dadaji ne bola phone ka kaam main dekhta hoon. "
+                      "Aap kaun ho? Aapki awaaz toh cartoon jaisi hai!",
         speaker="Bunty",
         rate=1.05,
         pitch=1.5,
@@ -208,3 +211,11 @@ Call the caller "Pappu" in every reply, whatever stall you are using.
 }
 
 DEFAULT_PERSONA = "sweet"
+
+# Mid-call pass: on the scammer's second push for phone/app steps (or the "Pass to Bunty"
+# button), Dadaji says PASS_LINE and Naughty Bunty takes over for the rest of the call.
+PASS_TO = "bunty"
+PASS_LINE = "Ruko beta, yeh phone ka kaam Bunty dekhta hai, usko deta hoon... BUNTYYY!"
+# Every Bunty reply after a pass gets this note: the earlier replies in the history were Dadaji's.
+PASS_NOTE = ("Dadaji answered this call first and has just handed you the phone, then gone to lie "
+             "down. The earlier replies in this call were his, not yours.")

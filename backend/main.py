@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from backend import config, dashboard, db, orchestrator, reporter, stt
 from backend.case_file import CaseFile
 from backend.llm import GroqUnavailable
-from backend.personas import DEFAULT_PERSONA, PERSONAS
+from backend.personas import DEFAULT_PERSONA, PASS_TO, PERSONAS
 
 MAX_AUDIO_BYTES = 5 * 1024 * 1024  # a 20 s clip is well under 1 MB
 
@@ -39,6 +39,7 @@ class ChatResponse(BaseModel):
     persona: str
     reply: str = ""
     hangup: bool = False  # the scammer is giving up: the browser plays the finale and ends the call
+    passed: dict | None = None  # Dadaji passed the phone: {persona, line, greeting}; reply is the line
 
 
 class CallStartRequest(BaseModel):
@@ -52,6 +53,10 @@ class CallStartResponse(BaseModel):
 
 
 class CallEndRequest(BaseModel):
+    session_id: str
+
+
+class CallPassRequest(BaseModel):
     session_id: str
 
 
@@ -88,7 +93,7 @@ def call_start(req: CallStartRequest):
     session_id, session = new_session(req.persona)
     greeting = PERSONAS[req.persona].greeting
     session["history"].append({"role": "assistant", "content": greeting})
-    session["case"].add_message("dadaji", greeting)
+    session["case"].add_message("dadaji", greeting, PERSONAS[req.persona].speaker)
     return CallStartResponse(session_id=session_id, persona=req.persona, greeting=greeting)
 
 
@@ -106,7 +111,20 @@ async def chat_endpoint(req: ChatRequest):
     # All the agents run here; failures fall back to in-character lines instead of errors.
     reply = await orchestrator.handle_turn(session, req.message)
     return ChatResponse(session_id=session_id, persona=session["persona"],
-                        reply=reply or "", hangup=reply is None)
+                        reply=reply or "", hangup=reply is None, passed=session.pop("passed", None))
+
+
+@app.post("/api/call/pass")
+async def call_pass(req: CallPassRequest):
+    """The "Pass to Bunty" button: the same pass the rule makes, by hand."""
+    session = sessions.get(req.session_id)
+    if session is None:
+        raise HTTPException(404, "Unknown call (the server may have restarted).")
+    if session["case"].ended_at is not None:
+        raise HTTPException(409, "This call has ended.")
+    if session["persona"] == PASS_TO:
+        raise HTTPException(409, "Bunty already has the phone.")
+    return await orchestrator.pass_phone(session, "button", "Pass to Bunty")
 
 
 @app.post("/api/call/end")

@@ -4,6 +4,8 @@
                   ├─ guardrail input check ┐ asyncio.gather                        │
                   └─ analyst ──────────────┴─> tactic ─> Dadaji ─> guardrail output ─> reply
 Dashboard updates are pushed at each step, and the case file is saved after each turn.
+On the scammer's second push for phone/app steps, Dadaji passes the phone to Naughty Bunty
+(pass_phone): a fixed line instead of an LLM reply, and Bunty answers from then on.
 If the scammer is giving up (a phrase, or the analyst's hanging_up flag), Dadaji doesn't reply:
 handle_turn() returns None and the browser plays the finale and calls end_call().
 end_call() wraps the call up: it waits for evidence, ends the case, writes the complaint, saves.
@@ -15,7 +17,7 @@ import time
 
 from backend import analyst, dashboard, db, evidence, guardrail, reporter
 from backend.dadaji import REPEAT_ASK, asked_to_repeat, dadaji_reply, recent_replies
-from backend.personas import PERSONAS
+from backend.personas import PASS_LINE, PASS_NOTE, PASS_TO, PERSONAS
 
 log = logging.getLogger("uvicorn.error")
 
@@ -59,6 +61,23 @@ async def _caller_left(case, turn: int, source: str, detail: str) -> None:
     return None
 
 
+async def pass_phone(session: dict, source: str, detail: str) -> dict:
+    """Dadaji passes the phone to Bunty: his fixed line, then Bunty's first line. Bunty
+    answers for the rest of the call. Returns what the browser shows and speaks."""
+    case = session["case"]
+    old = PERSONAS[session["persona"]]
+    bunty = PERSONAS[PASS_TO]
+    session["persona"] = case.persona = PASS_TO
+    case.phone_passed = {"turn": case.turns, "source": source, "detail": detail, "from": old.key}
+    for speaker, line in ((old.speaker, PASS_LINE), (bunty.speaker, bunty.pass_greeting)):
+        session["history"].append({"role": "assistant", "content": line})
+        case.add_message("dadaji", line, speaker)
+    await dashboard.publish(case)
+    await _save(case)
+    log.info("turn %d: Dadaji passed the phone to Bunty (%s: %s)", case.turns, source, detail)
+    return {"persona": PASS_TO, "line": PASS_LINE, "greeting": bunty.pass_greeting}
+
+
 async def handle_turn(session: dict, text: str) -> str | None:
     """Dadaji's reply, or None if the scammer is giving up (time for the finale)."""
     case = session["case"]
@@ -94,6 +113,16 @@ async def handle_turn(session: dict, text: str) -> str | None:
             update={"scam_type": case.scam_type, "risk_score": case.risk_score, "signals": case.signals})
         if analysis.hanging_up:
             return await _caller_left(case, turn, "analyst", "hanging_up flag")
+    # The second push for phone/app steps: Dadaji passes the phone to Bunty, no LLM needed.
+    step = analyst.phone_step(text)
+    if step and session["persona"] != PASS_TO:
+        said = [m["text"] for m in case.transcript if m["role"] == "scammer"]
+        if sum(1 for t in said if analyst.phone_step(t)) >= analyst.PASS_AFTER:
+            case.stall_tactic, case.stall_note = "call_bunty_first", "Passed the phone to Bunty."
+            case.tactics_used.append("call_bunty_first")
+            session["passed"] = await pass_phone(session, "rule", step)
+            return PASS_LINE
+
     repeated = asked_to_repeat(session["history"])
     if guard.flagged:
         tactic = "baffled_by_jargon"
@@ -107,6 +136,8 @@ async def handle_turn(session: dict, text: str) -> str | None:
     await dashboard.publish(case)
 
     note = analyst.tactic_note(tactic, persona.tactics)
+    if case.phone_passed:
+        note = PASS_NOTE + " " + note
     extra_check = None
     if repeated:
         # He has asked once already. Say so, and block a draft that asks again anyway.
@@ -134,7 +165,7 @@ async def handle_turn(session: dict, text: str) -> str | None:
     case.guardrail_blocks += [{"turn": turn, **b} for b in blocks]
 
     session["history"].append({"role": "assistant", "content": reply})
-    case.add_message("dadaji", reply)
+    case.add_message("dadaji", reply, persona.speaker)
     await dashboard.publish(case)
     await _save(case)
     log.info("turn %d: %s", turn, case.timings)
@@ -152,7 +183,8 @@ async def end_call(session: dict):
     case = session["case"]
     case.ended_at = time.time()  # first, so the timer stops at the moment End call was pressed
     # The browser speaks the finale itself (no waiting); it's recorded here for the transcript.
-    case.add_message("dadaji", PERSONAS[session["persona"]].finale)
+    persona = PERSONAS[session["persona"]]
+    case.add_message("dadaji", persona.finale, persona.speaker)
     if session["pending"]:
         _, late = await asyncio.wait(session["pending"], timeout=EVIDENCE_WAIT)
         if late:
